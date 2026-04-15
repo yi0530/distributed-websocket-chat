@@ -6,7 +6,8 @@ __pycache__/
 # PyCharm 配置文件
 .idea/
 
-# 虚拟环境
+# 虚拟环境（关键：匹配你的.venv文件夹）
+.venv/
 venv/
 env/
 
