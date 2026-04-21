@@ -1,0 +1,165 @@
+import asyncio
+import signal
+from time import time
+from urllib.parse import parse_qs, urlparse
+
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
+
+from backend.core.auth import decode_jwt_token, verify_jwt_token
+from backend.core.protocol import parse_protocol, send_error, validate_protocol
+from backend.core.state import ConnectionContext, connections
+import backend.core.state as state_module
+from backend.handlers.heartbeat import handle_heartbeat
+from backend.handlers.login import handle_login
+from backend.utils.logger import logger
+from backend.config import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
+
+
+def extract_token_from_path(path: str) -> str | None:
+    parsed = urlparse(path)
+    query_params = parse_qs(parsed.query)
+    return query_params.get("token", [None])[0]
+
+
+async def bind_context_from_token(websocket, token: str | None):
+    ctx = connections[websocket]
+    if not token:
+        return
+
+    payload = decode_jwt_token(token)
+    if not payload:
+        return
+
+    ctx.user_id = payload["sub"]
+    ctx.is_authenticated = True
+
+
+async def check_connection_auth(server_obj, request):
+    token = extract_token_from_path(request.path)
+
+    # 匿名连接放行：仅用于 login
+    if not token:
+        return None
+
+    # 携带 token 但无效：握手阶段拒绝
+    if not verify_jwt_token(token):
+        raise InvalidHandshake("Token 鉴权失败")
+
+    return None
+
+
+async def heartbeat_transport_task(websocket):
+    ctx = connections[websocket]
+
+    while True:
+        try:
+            pong_waiter = await websocket.ping()
+            await asyncio.wait_for(pong_waiter, timeout=HEARTBEAT_TIMEOUT)
+            ctx.last_pong = int(time())
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+        except asyncio.TimeoutError:
+            logger.warning("传输层心跳超时，主动关闭连接：user=%s", ctx.user_id or "anonymous")
+            await websocket.close(code=1001, reason="heartbeat timeout")
+            break
+        except ConnectionClosed:
+            break
+        except Exception:
+            logger.exception("传输层心跳任务异常")
+            break
+
+
+async def dispatch_message(websocket, proto: dict):
+    msg_type = proto.get("msg_type")
+    msg_id = proto.get("msg_id")
+    ctx = connections[websocket]
+
+    if not isinstance(msg_type, str) or not msg_type:
+        await send_error(websocket, "缺少合法 msg_type", msg_id=msg_id)
+        return
+
+    # 未认证连接：仅允许 login
+    if not ctx.is_authenticated and msg_type != "login":
+        await send_error(websocket, "请先登录获取 Token", msg_id=msg_id, code=401)
+        return
+
+    if msg_type == "login":
+        await handle_login(websocket, proto)
+    elif msg_type == "heartbeat":
+        await handle_heartbeat(websocket, proto)
+    else:
+        await send_error(websocket, f"暂不支持的 msg_type: {msg_type}", msg_id=msg_id, code=405)
+
+
+async def handle_client(websocket):
+    ctx = ConnectionContext(websocket=websocket)
+    connections[websocket] = ctx
+
+    request_path = getattr(getattr(websocket, "request", None), "path", "") or ""
+    token = extract_token_from_path(request_path)
+    await bind_context_from_token(websocket, token)
+
+    ctx.heartbeat_task = asyncio.create_task(heartbeat_transport_task(websocket))
+
+    logger.info(
+        "新连接：online=%s auth=%s user=%s",
+        len(connections),
+        ctx.is_authenticated,
+        ctx.user_id or "anonymous",
+    )
+
+    try:
+        async for raw_message in websocket:
+            proto = parse_protocol(raw_message)
+            if proto is None:
+                await send_error(websocket, "协议解析失败")
+                continue
+
+            ok, err_msg = validate_protocol(proto)
+            if not ok:
+                await send_error(websocket, err_msg, msg_id=proto.get("msg_id"))
+                continue
+
+            await dispatch_message(websocket, proto)
+    except ConnectionClosed:
+        logger.info("连接断开：user=%s", ctx.user_id or "anonymous")
+    except Exception:
+        logger.exception("连接处理出现未预期异常")
+    finally:
+        if ctx.heartbeat_task is not None:
+            ctx.heartbeat_task.cancel()
+            try:
+                await ctx.heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("清理心跳任务失败")
+
+        connections.pop(websocket, None)
+        logger.info("连接清理完成：online=%s", len(connections))
+
+
+async def shutdown_server():
+    logger.info("服务关闭中：准备断开所有连接")
+
+    for websocket, ctx in list(connections.items()):
+        try:
+            await websocket.close(code=1000, reason="服务关闭")
+        except Exception:
+            logger.exception("关闭连接失败：user=%s", ctx.user_id or "anonymous")
+
+    connections.clear()
+
+    if state_module.server is not None:
+        state_module.server.close()
+        await state_module.server.wait_closed()
+
+    logger.info("服务关闭完成")
+
+
+def handle_exit(sig, frame):
+    logger.info("收到退出信号：%s", sig)
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(shutdown_server())
+    except RuntimeError:
+        logger.warning("事件循环未运行，无法异步关闭服务")
