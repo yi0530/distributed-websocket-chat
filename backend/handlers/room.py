@@ -1,13 +1,11 @@
 from backend.core.protocol import build_message, send_error, send_json
-from backend.core.room_service import (
-    create_room,
-    get_room_members,
-    join_room,
-    leave_room,
+from backend.core.conversation_service import (
+    create_group_conversation,
+    get_conversation,
+    get_conversation_participants,
+    join_group_conversation,
+    leave_group_conversation,
 )
-from backend.core.state import connections
-from backend.core.protocol import build_message, send_error, send_json
-from backend.core.room_service import get_room
 from backend.core.state import connections
 
 
@@ -21,7 +19,7 @@ async def handle_create_room(websocket, proto: dict):
         return
 
     try:
-        room = create_room(name=name, owner_id=ctx.user_id)
+        conversation = create_group_conversation(name=name, owner_id=ctx.user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
         return
@@ -33,9 +31,10 @@ async def handle_create_room(websocket, proto: dict):
             msg_id=msg_id,
             code=200,
             content={
-                "room_id": room["room_id"],
-                "name": room["name"],
-                "owner": room["owner"],
+                "conversation_id": conversation["conversation_id"],
+                "name": conversation["name"],
+                "owner": conversation["owner"],
+                "type": conversation["type"],
             },
         ),
     )
@@ -43,15 +42,15 @@ async def handle_create_room(websocket, proto: dict):
 
 async def handle_join_room(websocket, proto: dict):
     msg_id = proto.get("msg_id")
-    room_id = proto.get("room_id")
+    conversation_id = proto.get("conversation_id")
     ctx = connections[websocket]
 
-    if not isinstance(room_id, str) or not room_id.strip():
-        await send_error(websocket, "join_room 报文缺少合法 room_id", msg_id=msg_id)
+    if not isinstance(conversation_id, str) or not conversation_id.strip():
+        await send_error(websocket, "join_room 报文缺少合法 conversation_id", msg_id=msg_id)
         return
 
     try:
-        room = join_room(room_id=room_id, user_id=ctx.user_id)
+        conversation = join_group_conversation(conversation_id=conversation_id, user_id=ctx.user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
         return
@@ -63,8 +62,8 @@ async def handle_join_room(websocket, proto: dict):
             msg_id=msg_id,
             code=200,
             content={
-                "room_id": room["room_id"],
-                "name": room["name"],
+                "conversation_id": conversation["conversation_id"],
+                "name": conversation["name"],
                 "user_id": ctx.user_id,
             },
         ),
@@ -73,15 +72,15 @@ async def handle_join_room(websocket, proto: dict):
 
 async def handle_leave_room(websocket, proto: dict):
     msg_id = proto.get("msg_id")
-    room_id = proto.get("room_id")
+    conversation_id = proto.get("conversation_id")
     ctx = connections[websocket]
 
-    if not isinstance(room_id, str) or not room_id.strip():
-        await send_error(websocket, "leave_room 报文缺少合法 room_id", msg_id=msg_id)
+    if not isinstance(conversation_id, str) or not conversation_id.strip():
+        await send_error(websocket, "leave_room 报文缺少合法 conversation_id", msg_id=msg_id)
         return
 
     try:
-        room = leave_room(room_id=room_id, user_id=ctx.user_id)
+        conversation = leave_group_conversation(conversation_id=conversation_id, user_id=ctx.user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
         return
@@ -93,24 +92,23 @@ async def handle_leave_room(websocket, proto: dict):
             msg_id=msg_id,
             code=200,
             content={
-                "room_id": room["room_id"],
-                "name": room["name"],
+                "conversation_id": conversation["conversation_id"],
+                "name": conversation["name"],
                 "user_id": ctx.user_id,
             },
         ),
     )
 
-
 async def handle_get_room_members(websocket, proto: dict):
     msg_id = proto.get("msg_id")
-    room_id = proto.get("room_id")
+    conversation_id = proto.get("conversation_id")
 
-    if not isinstance(room_id, str) or not room_id.strip():
-        await send_error(websocket, "get_room_members 报文缺少合法 room_id", msg_id=msg_id)
+    if not isinstance(conversation_id, str) or not conversation_id.strip():
+        await send_error(websocket, "get_room_members 报文缺少合法 conversation_id", msg_id=msg_id)
         return
 
     try:
-        members = get_room_members(room_id=room_id)
+        participants = get_conversation_participants(conversation_id=conversation_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
         return
@@ -122,15 +120,16 @@ async def handle_get_room_members(websocket, proto: dict):
             msg_id=msg_id,
             code=200,
             content={
-                "room_id": room_id,
-                "members": members,
+                "conversation_id": conversation_id,
+                "participants": participants,
             },
         ),
     )
 
+
 async def handle_room_chat(websocket, proto: dict):
     msg_id = proto.get("msg_id")
-    room_id = proto.get("room_id")
+    conversation_id = proto.get("conversation_id")
     payload = proto.get("payload")
     ctx = connections[websocket]
 
@@ -140,13 +139,13 @@ async def handle_room_chat(websocket, proto: dict):
         return
 
     try:
-        room = get_room(room_id)
+        conversation = get_conversation(conversation_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
         return
 
-    if ctx.user_id not in room["members"]:
-        await send_error(websocket, "你不在该房间中，无法发送消息", msg_id=msg_id, code=403)
+    if ctx.user_id not in conversation["participants"]:
+        await send_error(websocket, "你不在该会话中，无法发送消息", msg_id=msg_id, code=403)
         return
 
     response = build_message(
@@ -154,14 +153,14 @@ async def handle_room_chat(websocket, proto: dict):
         msg_id=msg_id,
         code=200,
         content={
-            "room_id": room_id,
+            "conversation_id": conversation_id,
             "from_user_id": ctx.user_id,
             "text": text.strip(),
         },
     )
 
-    # 广播给房间内所有在线成员
-    room_members = room["members"]
+    participants = conversation["participants"]
+
     for target_ws, target_ctx in connections.items():
-        if target_ctx.is_authenticated and target_ctx.user_id in room_members:
+        if target_ctx.is_authenticated and target_ctx.user_id in participants:
             await send_json(target_ws, response)

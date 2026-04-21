@@ -19,13 +19,11 @@ from backend.handlers.room import (
     handle_get_room_members,
     handle_join_room,
     handle_leave_room,
-)
-from backend.handlers.room import (
-    handle_create_room,
-    handle_get_room_members,
-    handle_join_room,
-    handle_leave_room,
     handle_room_chat,
+)
+from backend.handlers.private_chat import (
+    handle_create_private_conversation,
+    handle_private_chat,
 )
 
 
@@ -112,6 +110,10 @@ async def dispatch_message(websocket, proto: dict):
         await handle_get_room_members(websocket, proto)
     elif msg_type == "room_chat":
         await handle_room_chat(websocket, proto)
+    elif msg_type == "create_private_conversation":
+        await handle_create_private_conversation(websocket, proto)
+    elif msg_type == "private_chat":
+        await handle_private_chat(websocket, proto)
     else:
         await send_error(websocket, f"暂不支持的 msg_type: {msg_type}", msg_id=msg_id, code=405)
 
