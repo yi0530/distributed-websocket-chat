@@ -89,5 +89,28 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
         need_ack = proto.get("need_ack")
         if need_ack is not None and not isinstance(need_ack, bool):
             return False, "heartbeat 报文的 need_ack 必须为布尔值"
+    elif msg_type == "get_online_users":
+        pass
+    elif msg_type == "create_room":
+        name = proto.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return False, "create_room 报文缺少合法 name"
+    elif msg_type in {"join_room", "leave_room", "get_room_members"}:
+        room_id = proto.get("room_id")
+        if not isinstance(room_id, str) or not room_id.strip():
+            return False, f"{msg_type} 报文缺少合法 room_id"
+    elif msg_type == "room_chat":
+        room_id = proto.get("room_id")
+        payload = proto.get("payload")
+
+        if not isinstance(room_id, str) or not room_id.strip():
+            return False, "room_chat 报文缺少合法 room_id"
+
+        if not isinstance(payload, dict):
+            return False, "room_chat 报文缺少合法 payload"
+
+        text = payload.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return False, "room_chat 报文缺少合法 text"
 
     return True, ""

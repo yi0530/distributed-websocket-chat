@@ -13,6 +13,20 @@ from backend.handlers.heartbeat import handle_heartbeat
 from backend.handlers.login import handle_login
 from backend.utils.logger import logger
 from backend.config import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
+from backend.handlers.user_list import handle_get_online_users
+from backend.handlers.room import (
+    handle_create_room,
+    handle_get_room_members,
+    handle_join_room,
+    handle_leave_room,
+)
+from backend.handlers.room import (
+    handle_create_room,
+    handle_get_room_members,
+    handle_join_room,
+    handle_leave_room,
+    handle_room_chat,
+)
 
 
 def extract_token_from_path(path: str) -> str | None:
@@ -86,6 +100,18 @@ async def dispatch_message(websocket, proto: dict):
         await handle_login(websocket, proto)
     elif msg_type == "heartbeat":
         await handle_heartbeat(websocket, proto)
+    elif msg_type == "get_online_users":
+        await handle_get_online_users(websocket, proto)
+    elif msg_type == "create_room":
+        await handle_create_room(websocket, proto)
+    elif msg_type == "join_room":
+        await handle_join_room(websocket, proto)
+    elif msg_type == "leave_room":
+        await handle_leave_room(websocket, proto)
+    elif msg_type == "get_room_members":
+        await handle_get_room_members(websocket, proto)
+    elif msg_type == "room_chat":
+        await handle_room_chat(websocket, proto)
     else:
         await send_error(websocket, f"暂不支持的 msg_type: {msg_type}", msg_id=msg_id, code=405)
 

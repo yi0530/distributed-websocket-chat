@@ -17,3 +17,7 @@ class ConnectionContext:
 connections: dict[Any, ConnectionContext] = {}
 
 server = None
+
+rooms: dict[str, dict] = {}
+
+conversations: dict[str, dict] = {}
