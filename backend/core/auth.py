@@ -8,11 +8,12 @@ from backend.config import JWT_ALGORITHM, JWT_EXP_HOURS, JWT_SECRET
 
 
 def generate_jwt_token(user_id: str) -> str:
+    now = datetime.now(UTC)
     payload = {
         "jti": str(uuid.uuid4()),
         "sub": user_id,
-        "iat": datetime.now(UTC),
-        "exp": datetime.now(UTC) + timedelta(hours=JWT_EXP_HOURS),
+        "iat": now,
+        "exp": now + timedelta(hours=JWT_EXP_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -29,3 +30,14 @@ def decode_jwt_token(token: str) -> dict[str, Any] | None:
 
 def verify_jwt_token(token: str) -> bool:
     return decode_jwt_token(token) is not None
+
+
+def get_token_exp_ts(payload: dict[str, Any]) -> int | None:
+    exp = payload.get("exp")
+    if isinstance(exp, int):
+        return exp
+    if isinstance(exp, float):
+        return int(exp)
+    if isinstance(exp, datetime):
+        return int(exp.timestamp())
+    return None

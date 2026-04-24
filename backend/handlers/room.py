@@ -1,4 +1,6 @@
-from backend.core.protocol import build_message, send_error, send_json
+from time import time
+
+from backend.core.protocol import build_message, send_error, send_json, send_ack
 from backend.core.conversation_service import (
     create_group_conversation,
     get_conversation,
@@ -6,7 +8,8 @@ from backend.core.conversation_service import (
     join_group_conversation,
     leave_group_conversation,
 )
-from backend.core.state import connections
+from backend.core.state import connections,processed_message_keys
+from backend.core.offline_message_service import store_offline_message
 
 
 async def handle_create_room(websocket, proto: dict):
@@ -99,12 +102,12 @@ async def handle_leave_room(websocket, proto: dict):
         ),
     )
 
-async def handle_get_room_members(websocket, proto: dict):
+async def handle_get_participants(websocket, proto: dict):
     msg_id = proto.get("msg_id")
     conversation_id = proto.get("conversation_id")
 
     if not isinstance(conversation_id, str) or not conversation_id.strip():
-        await send_error(websocket, "get_room_members 报文缺少合法 conversation_id", msg_id=msg_id)
+        await send_error(websocket, "get_participants 报文缺少合法 conversation_id", msg_id=msg_id)
         return
 
     try:
@@ -116,7 +119,7 @@ async def handle_get_room_members(websocket, proto: dict):
     await send_json(
         websocket,
         build_message(
-            "room_members",
+            "participants",
             msg_id=msg_id,
             code=200,
             content={
@@ -136,6 +139,15 @@ async def handle_room_chat(websocket, proto: dict):
     text = payload.get("text") if isinstance(payload, dict) else None
     if not isinstance(text, str) or not text.strip():
         await send_error(websocket, "room_chat 报文缺少合法 text", msg_id=msg_id)
+        return
+
+    dedupe_key = f"{ctx.user_id}:{msg_id}"
+    need_ack = bool(proto.get("need_ack"))
+
+    # 重复消息：不重复广播，但可再次回 ACK
+    if dedupe_key in processed_message_keys:
+        if need_ack:
+            await send_ack(websocket, msg_id, status="duplicate")
         return
 
     try:
@@ -161,6 +173,37 @@ async def handle_room_chat(websocket, proto: dict):
 
     participants = conversation["participants"]
 
-    for target_ws, target_ctx in connections.items():
-        if target_ctx.is_authenticated and target_ctx.user_id in participants:
-            await send_json(target_ws, response)
+    for user_id in participants:
+        # 自己在线连接照常发
+        if user_id == ctx.user_id:
+            for target_ws, target_ctx in connections.items():
+                if target_ctx.is_authenticated and target_ctx.user_id == user_id:
+                    await send_json(target_ws, response)
+            continue
+
+        # 其他参与者：在线就发，不在线就存离线
+        delivered = False
+        for target_ws, target_ctx in connections.items():
+            if target_ctx.is_authenticated and target_ctx.user_id == user_id:
+                await send_json(target_ws, response)
+                delivered = True
+
+        if not delivered:
+            store_offline_message(
+                user_id,
+                {
+                    "msg_id": msg_id,
+                    "conversation_id": conversation_id,
+                    "from_user_id": ctx.user_id,
+                    "msg_type": "room_chat",
+                    "payload": {
+                        "text": text.strip(),
+                    },
+                    "timestamp": int(time()),
+                },
+            )
+
+    processed_message_keys[dedupe_key] = int(time())
+
+    if need_ack:
+        await send_ack(websocket, msg_id, status="processed")

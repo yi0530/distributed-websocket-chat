@@ -1,5 +1,5 @@
 from backend.config import TEST_ACCOUNTS
-from backend.core.auth import generate_jwt_token
+from backend.core.auth import decode_jwt_token, generate_jwt_token, get_token_exp_ts
 from backend.core.protocol import build_message, send_error, send_json
 from backend.utils.logger import logger
 
@@ -26,9 +26,20 @@ async def handle_login(websocket, proto: dict):
         return
 
     token = generate_jwt_token(username)
+    payload = decode_jwt_token(token) or {}
+    expires_at = get_token_exp_ts(payload)
+
     logger.info("登录成功：user=%s", username)
 
     await send_json(
         websocket,
-        build_message("login", msg_id=msg_id, code=200, content=token),
+        build_message(
+            "login",
+            msg_id=msg_id,
+            code=200,
+            content={
+                "token": token,
+                "expires_at": expires_at,
+            },
+        ),
     )

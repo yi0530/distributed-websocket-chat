@@ -12,6 +12,7 @@ class ConnectionContext:
     connected_at: int = field(default_factory=lambda: int(time()))
     last_pong: int = field(default_factory=lambda: int(time()))
     heartbeat_task: asyncio.Task | None = None
+    token_exp: int | None = None
 
 
 connections: dict[Any, ConnectionContext] = {}
@@ -21,3 +22,7 @@ server = None
 rooms: dict[str, dict] = {}
 
 conversations: dict[str, dict] = {}
+
+processed_message_keys: dict[str, int] = {}
+
+offline_messages: dict[str, list[dict]] = {}

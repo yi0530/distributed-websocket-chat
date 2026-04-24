@@ -46,10 +46,16 @@ async def send_error(websocket, err_msg: str, *, msg_id: str | None = None, code
     )
 
 
-async def send_ack(websocket, original_msg_id: str):
+async def send_ack(websocket, original_msg_id: str, *, status: str = "processed"):
     await send_json(
         websocket,
-        build_message("ack", msg_id=f"ack_{original_msg_id}"),
+        build_message(
+            "ack",
+            content={
+                "original_msg_id": original_msg_id,
+                "status": status,
+            },
+        ),
     )
 
 
@@ -97,6 +103,10 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
     elif msg_type == "get_online_users":
         pass
 
+    # ====================== 刷新token ======================
+    elif msg_type == "refresh_token":
+        pass
+
     # ====================== 创建群聊会话 ======================
     elif msg_type == "create_room":
         name = proto.get("name")
@@ -104,7 +114,7 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
             return False, "create_room 报文缺少合法 name"
 
     # ====================== 会话相关（基于 conversation_id） ======================
-    elif msg_type in {"join_room", "leave_room", "get_room_members"}:
+    elif msg_type in {"join_room", "leave_room", "participants"}:
         conversation_id = proto.get("conversation_id")
         if not isinstance(conversation_id, str) or not conversation_id.strip():
             return False, f"{msg_type} 报文缺少合法 conversation_id"
@@ -113,6 +123,7 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
     elif msg_type == "room_chat":
         conversation_id = proto.get("conversation_id")
         payload = proto.get("payload")
+        need_ack = proto.get("need_ack")
 
         if not isinstance(conversation_id, str) or not conversation_id.strip():
             return False, "room_chat 报文缺少合法 conversation_id"
@@ -124,6 +135,9 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
         if not isinstance(text, str) or not text.strip():
             return False, "room_chat 报文缺少合法 text"
 
+        if need_ack is not None and not isinstance(need_ack, bool):
+            return False, "room_chat 报文的 need_ack 必须为布尔值"
+
     # ====================== 创建私聊房间 ======================
     elif msg_type == "create_private_conversation":
         target_user_id = proto.get("target_user_id")
@@ -134,6 +148,7 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
     elif msg_type == "private_chat":
         conversation_id = proto.get("conversation_id")
         payload = proto.get("payload")
+        need_ack = proto.get("need_ack")
 
         if not isinstance(conversation_id, str) or not conversation_id.strip():
             return False, "private_chat 报文缺少合法 conversation_id"
@@ -144,6 +159,9 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
         text = payload.get("text")
         if not isinstance(text, str) or not text.strip():
             return False, "private_chat 报文缺少合法 text"
+
+        if need_ack is not None and not isinstance(need_ack, bool):
+            return False, "private_chat 报文的 need_ack 必须为布尔值"
 
     else:
         return False, f"不支持的 msg_type: {msg_type}"

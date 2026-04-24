@@ -5,8 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
-from backend.core.auth import decode_jwt_token, verify_jwt_token
-from backend.core.protocol import parse_protocol, send_error, validate_protocol
+from backend.core.auth import decode_jwt_token, get_token_exp_ts, verify_jwt_token
 from backend.core.state import ConnectionContext, connections
 import backend.core.state as state_module
 from backend.handlers.heartbeat import handle_heartbeat
@@ -16,7 +15,7 @@ from backend.config import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
 from backend.handlers.user_list import handle_get_online_users
 from backend.handlers.room import (
     handle_create_room,
-    handle_get_room_members,
+    handle_get_participants,
     handle_join_room,
     handle_leave_room,
     handle_room_chat,
@@ -25,6 +24,9 @@ from backend.handlers.private_chat import (
     handle_create_private_conversation,
     handle_private_chat,
 )
+from backend.core.offline_message_service import get_offline_messages, clear_offline_messages
+from backend.core.protocol import build_message, parse_protocol, send_error, send_json, validate_protocol
+from backend.handlers.token import handle_refresh_token
 
 
 def extract_token_from_path(path: str) -> str | None:
@@ -44,6 +46,7 @@ async def bind_context_from_token(websocket, token: str | None):
 
     ctx.user_id = payload["sub"]
     ctx.is_authenticated = True
+    ctx.token_exp = get_token_exp_ts(payload)
 
 
 async def check_connection_auth(server_obj, request):
@@ -107,13 +110,15 @@ async def dispatch_message(websocket, proto: dict):
     elif msg_type == "leave_room":
         await handle_leave_room(websocket, proto)
     elif msg_type == "get_room_members":
-        await handle_get_room_members(websocket, proto)
+        await handle_get_participants(websocket, proto)
     elif msg_type == "room_chat":
         await handle_room_chat(websocket, proto)
     elif msg_type == "create_private_conversation":
         await handle_create_private_conversation(websocket, proto)
     elif msg_type == "private_chat":
         await handle_private_chat(websocket, proto)
+    elif msg_type == "refresh_token":
+        await handle_refresh_token(websocket, proto)
     else:
         await send_error(websocket, f"暂不支持的 msg_type: {msg_type}", msg_id=msg_id, code=405)
 
@@ -127,6 +132,8 @@ async def handle_client(websocket):
     await bind_context_from_token(websocket, token)
 
     ctx.heartbeat_task = asyncio.create_task(heartbeat_transport_task(websocket))
+
+    await deliver_offline_messages(websocket)
 
     logger.info(
         "新连接：online=%s auth=%s user=%s",
@@ -191,3 +198,48 @@ def handle_exit(sig, frame):
         loop.create_task(shutdown_server())
     except RuntimeError:
         logger.warning("事件循环未运行，无法异步关闭服务")
+
+async def deliver_offline_messages(websocket):
+    ctx = connections[websocket]
+    if not ctx.is_authenticated or not ctx.user_id:
+        return
+
+    messages = get_offline_messages(ctx.user_id)
+    if not messages:
+        return
+
+    for msg in messages:
+        msg_type = msg.get("msg_type")
+        conversation_id = msg.get("conversation_id")
+        from_user_id = msg.get("from_user_id")
+        payload = msg.get("payload", {})
+        text = payload.get("text", "")
+
+        if msg_type == "room_chat":
+            response = build_message(
+                "room_chat",
+                msg_id=msg.get("msg_id"),
+                code=200,
+                content={
+                    "conversation_id": conversation_id,
+                    "from_user_id": from_user_id,
+                    "text": text,
+                },
+            )
+            await send_json(websocket, response)
+
+        elif msg_type == "private_chat":
+            response = build_message(
+                "private_chat",
+                msg_id=msg.get("msg_id"),
+                code=200,
+                content={
+                    "conversation_id": conversation_id,
+                    "from_user_id": from_user_id,
+                    "to_user_id": ctx.user_id,
+                    "text": text,
+                },
+            )
+            await send_json(websocket, response)
+
+    clear_offline_messages(ctx.user_id)
