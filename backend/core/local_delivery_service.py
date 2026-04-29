@@ -1,0 +1,170 @@
+from time import time
+
+from backend.config import NODE_ID
+from backend.core.conversation_service import get_conversation
+from backend.core.offline_message_service import store_offline_message
+from backend.core.online_registry_service import get_user_online_node
+from backend.core.protocol import build_message, send_json
+from backend.core.state import connections
+
+
+def get_online_websockets_by_user_id(user_id: str) -> list:
+    result = []
+    for websocket, ctx in connections.items():
+        if ctx.is_authenticated and ctx.user_id == user_id:
+            result.append(websocket)
+    return result
+
+
+async def deliver_room_message_locally(
+    *,
+    msg_id: str,
+    conversation_id: str,
+    from_user_id: str,
+    text: str,
+) -> None:
+    conversation = get_conversation(conversation_id)
+    participants = conversation["participants"]
+
+    response = build_message(
+        "room_chat",
+        msg_id=msg_id,
+        code=200,
+        content={
+            "conversation_id": conversation_id,
+            "from_user_id": from_user_id,
+            "text": text,
+        },
+    )
+
+    for user_id in participants:
+        target_websockets = get_online_websockets_by_user_id(user_id)
+
+        if target_websockets:
+            for target_ws in target_websockets:
+                await send_json(target_ws, response)
+            continue
+
+        if user_id == from_user_id:
+            continue
+
+        online_node = get_user_online_node(user_id)
+        if online_node and online_node != NODE_ID:
+            continue
+
+        store_offline_message(
+            user_id,
+            {
+                "msg_id": msg_id,
+                "conversation_id": conversation_id,
+                "from_user_id": from_user_id,
+                "msg_type": "room_chat",
+                "payload": {
+                    "text": text,
+                },
+                "timestamp": int(time()),
+            },
+        )
+
+
+async def deliver_private_message_locally(
+    *,
+    msg_id: str,
+    conversation_id: str,
+    from_user_id: str,
+    to_user_id: str,
+    text: str,
+) -> None:
+    response = build_message(
+        "private_chat",
+        msg_id=msg_id,
+        code=200,
+        content={
+            "conversation_id": conversation_id,
+            "from_user_id": from_user_id,
+            "to_user_id": to_user_id,
+            "text": text,
+        },
+    )
+
+    sender_websockets = get_online_websockets_by_user_id(from_user_id)
+    for sender_ws in sender_websockets:
+        await send_json(sender_ws, response)
+
+    target_websockets = get_online_websockets_by_user_id(to_user_id)
+    if target_websockets:
+        for target_ws in target_websockets:
+            await send_json(target_ws, response)
+        return
+
+    online_node = get_user_online_node(to_user_id)
+    if online_node and online_node != NODE_ID:
+        return
+
+    store_offline_message(
+        to_user_id,
+        {
+            "msg_id": msg_id,
+            "conversation_id": conversation_id,
+            "from_user_id": from_user_id,
+            "msg_type": "private_chat",
+            "payload": {
+                "text": text,
+            },
+            "timestamp": int(time()),
+        },
+    )
+
+
+async def deliver_room_message_online_only_locally(
+    *,
+    msg_id: str,
+    conversation_id: str,
+    from_user_id: str,
+    text: str,
+) -> None:
+    conversation = get_conversation(conversation_id)
+    participants = conversation["participants"]
+
+    response = build_message(
+        "room_chat",
+        msg_id=msg_id,
+        code=200,
+        content={
+            "conversation_id": conversation_id,
+            "from_user_id": from_user_id,
+            "text": text,
+        },
+    )
+
+    for user_id in participants:
+        target_websockets = get_online_websockets_by_user_id(user_id)
+        for target_ws in target_websockets:
+            await send_json(target_ws, response)
+
+
+async def deliver_private_message_online_only_locally(
+    *,
+    msg_id: str,
+    conversation_id: str,
+    from_user_id: str,
+    to_user_id: str,
+    text: str,
+) -> None:
+    response = build_message(
+        "private_chat",
+        msg_id=msg_id,
+        code=200,
+        content={
+            "conversation_id": conversation_id,
+            "from_user_id": from_user_id,
+            "to_user_id": to_user_id,
+            "text": text,
+        },
+    )
+
+    participant_ids = {from_user_id, to_user_id}
+    for user_id in participant_ids:
+        target_websockets = get_online_websockets_by_user_id(user_id)
+        for target_ws in target_websockets:
+            await send_json(target_ws, response)

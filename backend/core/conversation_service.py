@@ -1,6 +1,12 @@
 import uuid
 
-from backend.core.state import conversations
+from backend.core.conversation_store import (
+    delete_private_index,
+    get_private_index,
+    load_conversation,
+    save_conversation,
+    set_private_index,
+)
 
 
 def create_group_conversation(name: str, owner_id: str) -> dict:
@@ -20,46 +26,14 @@ def create_group_conversation(name: str, owner_id: str) -> dict:
         "participants": {owner_id},
     }
 
-    conversations[conversation_id] = conversation
+    save_conversation(conversation)
     return conversation
 
 
 def get_conversation(conversation_id: str) -> dict:
-    conversation = conversations.get(conversation_id)
+    conversation = load_conversation(conversation_id)
     if conversation is None:
         raise ValueError("会话不存在")
-    return conversation
-
-
-def join_group_conversation(conversation_id: str, user_id: str) -> dict:
-    conversation = get_conversation(conversation_id)
-
-    if conversation["type"] != "group":
-        raise ValueError("该会话不是群聊，不能执行加入操作")
-
-    if not isinstance(user_id, str) or not user_id.strip():
-        raise ValueError("用户ID不合法")
-
-    conversation["participants"].add(user_id)
-    return conversation
-
-
-def leave_group_conversation(conversation_id: str, user_id: str) -> dict:
-    conversation = get_conversation(conversation_id)
-
-    if conversation["type"] != "group":
-        raise ValueError("该会话不是群聊，不能执行退出操作")
-
-    if user_id not in conversation["participants"]:
-        raise ValueError("用户不在该会话中")
-
-    conversation["participants"].remove(user_id)
-
-    # 如果群聊没人了，直接删除
-    if not conversation["participants"]:
-        deleted_conversation = conversations.pop(conversation_id)
-        return deleted_conversation
-
     return conversation
 
 
@@ -67,17 +41,53 @@ def get_conversation_participants(conversation_id: str) -> list[str]:
     conversation = get_conversation(conversation_id)
     return sorted(conversation["participants"])
 
+
+def join_group_conversation(conversation_id: str, user_id: str) -> dict:
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("用户ID不能为空")
+
+    conversation = get_conversation(conversation_id)
+
+    if conversation["type"] != "group":
+        raise ValueError("该会话不是群聊")
+
+    conversation["participants"].add(user_id)
+    save_conversation(conversation)
+    return conversation
+
+
+def leave_group_conversation(conversation_id: str, user_id: str) -> dict:
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("用户ID不能为空")
+
+    conversation = get_conversation(conversation_id)
+
+    if conversation["type"] != "group":
+        raise ValueError("该会话不是群聊")
+
+    if user_id not in conversation["participants"]:
+        raise ValueError("用户不在该会话中")
+
+    conversation["participants"].remove(user_id)
+    save_conversation(conversation)
+    return conversation
+
+
 def find_private_conversation(user_a: str, user_b: str) -> dict | None:
-    target_participants = {user_a, user_b}
+    if not all(isinstance(v, str) and v.strip() for v in [user_a, user_b]):
+        raise ValueError("用户ID不合法")
 
-    for conversation in conversations.values():
-        if conversation["type"] != "private":
-            continue
+    conversation_id = get_private_index(user_a, user_b)
+    if not conversation_id:
+        return None
 
-        if conversation["participants"] == target_participants:
-            return conversation
+    conversation = load_conversation(conversation_id)
+    if conversation is None:
+        delete_private_index(user_a, user_b)
+        return None
 
-    return None
+    return conversation
+
 
 def create_or_get_private_conversation(owner_id: str, target_user_id: str) -> dict:
     if not isinstance(owner_id, str) or not owner_id.strip():
@@ -103,8 +113,10 @@ def create_or_get_private_conversation(owner_id: str, target_user_id: str) -> di
         "participants": {owner_id, target_user_id},
     }
 
-    conversations[conversation_id] = conversation
+    save_conversation(conversation)
+    set_private_index(owner_id, target_user_id, conversation_id)
     return conversation
+
 
 def get_other_private_participant(conversation_id: str, current_user_id: str) -> str:
     conversation = get_conversation(conversation_id)
@@ -125,3 +137,28 @@ def get_other_private_participant(conversation_id: str, current_user_id: str) ->
             return user_id
 
     raise ValueError("未找到私聊对方用户")
+
+
+def seed_test_conversations_once() -> None:
+    private_conv = load_conversation("conv_test_private")
+    if private_conv is None:
+        private_conv = {
+            "conversation_id": "conv_test_private",
+            "type": "private",
+            "name": "",
+            "owner": "user001",
+            "participants": {"user001", "user002"},
+        }
+        save_conversation(private_conv)
+        set_private_index("user001", "user002", "conv_test_private")
+
+    group_conv = load_conversation("conv_test_group")
+    if group_conv is None:
+        group_conv = {
+            "conversation_id": "conv_test_group",
+            "type": "group",
+            "name": "分布式测试群",
+            "owner": "user001",
+            "participants": {"user001", "user002", "admin"},
+        }
+        save_conversation(group_conv)

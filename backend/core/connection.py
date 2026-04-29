@@ -27,6 +27,8 @@ from backend.handlers.private_chat import (
 from backend.core.offline_message_service import get_offline_messages, clear_offline_messages
 from backend.core.protocol import build_message, parse_protocol, send_error, send_json, validate_protocol
 from backend.handlers.token import handle_refresh_token
+from backend.config import NODE_ID
+from backend.core.online_registry_service import clear_user_online, set_user_online
 
 
 def extract_token_from_path(path: str) -> str | None:
@@ -47,6 +49,8 @@ async def bind_context_from_token(websocket, token: str | None):
     ctx.user_id = payload["sub"]
     ctx.is_authenticated = True
     ctx.token_exp = get_token_exp_ts(payload)
+
+    set_user_online(ctx.user_id, NODE_ID)
 
 
 async def check_connection_auth(server_obj, request):
@@ -160,7 +164,9 @@ async def handle_client(websocket):
     except Exception:
         logger.exception("连接处理出现未预期异常")
     finally:
-        if ctx.heartbeat_task is not None:
+        ctx = connections.get(websocket)
+
+        if ctx and ctx.heartbeat_task is not None:
             ctx.heartbeat_task.cancel()
             try:
                 await ctx.heartbeat_task
@@ -168,6 +174,12 @@ async def handle_client(websocket):
                 pass
             except Exception:
                 logger.exception("清理心跳任务失败")
+
+        if ctx and ctx.user_id:
+            try:
+                clear_user_online(ctx.user_id, NODE_ID)
+            except Exception:
+                pass
 
         connections.pop(websocket, None)
         logger.info("连接清理完成：online=%s", len(connections))

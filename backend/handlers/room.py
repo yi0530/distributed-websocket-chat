@@ -10,6 +10,9 @@ from backend.core.conversation_service import (
 )
 from backend.core.state import connections,processed_message_keys
 from backend.core.offline_message_service import store_offline_message
+from backend.core.local_delivery_service import deliver_room_message_locally
+from backend.config import NODE_ID
+from backend.core.pubsub_service import publish_distributed_message
 
 
 async def handle_create_room(websocket, proto: dict):
@@ -160,48 +163,24 @@ async def handle_room_chat(websocket, proto: dict):
         await send_error(websocket, "你不在该会话中，无法发送消息", msg_id=msg_id, code=403)
         return
 
-    response = build_message(
-        "room_chat",
+    await deliver_room_message_locally(
         msg_id=msg_id,
-        code=200,
-        content={
-            "conversation_id": conversation_id,
-            "from_user_id": ctx.user_id,
+        conversation_id=conversation_id,
+        from_user_id=ctx.user_id,
+        text=text.strip(),
+    )
+    publish_distributed_message(
+    {
+        "source_node_id": NODE_ID,
+        "msg_id": msg_id,
+        "msg_type": "room_chat",
+        "conversation_id": conversation_id,
+        "from_user_id": ctx.user_id,
+        "payload": {
             "text": text.strip(),
         },
-    )
-
-    participants = conversation["participants"]
-
-    for user_id in participants:
-        # 自己在线连接照常发
-        if user_id == ctx.user_id:
-            for target_ws, target_ctx in connections.items():
-                if target_ctx.is_authenticated and target_ctx.user_id == user_id:
-                    await send_json(target_ws, response)
-            continue
-
-        # 其他参与者：在线就发，不在线就存离线
-        delivered = False
-        for target_ws, target_ctx in connections.items():
-            if target_ctx.is_authenticated and target_ctx.user_id == user_id:
-                await send_json(target_ws, response)
-                delivered = True
-
-        if not delivered:
-            store_offline_message(
-                user_id,
-                {
-                    "msg_id": msg_id,
-                    "conversation_id": conversation_id,
-                    "from_user_id": ctx.user_id,
-                    "msg_type": "room_chat",
-                    "payload": {
-                        "text": text.strip(),
-                    },
-                    "timestamp": int(time()),
-                },
-            )
+    }
+)
 
     processed_message_keys[dedupe_key] = int(time())
 

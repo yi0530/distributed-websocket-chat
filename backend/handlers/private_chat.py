@@ -8,6 +8,10 @@ from backend.core.conversation_service import (
 )
 from backend.core.state import connections,processed_message_keys
 from backend.core.offline_message_service import store_offline_message
+from backend.core.local_delivery_service import deliver_private_message_locally
+from backend.config import NODE_ID
+from backend.core.pubsub_service import publish_distributed_message
+from backend.core.online_registry_service import get_user_online_node
 
 
 def is_user_online(user_id: str) -> bool:
@@ -26,7 +30,8 @@ async def handle_create_private_conversation(websocket, proto: dict):
         await send_error(websocket, "create_private_conversation 报文缺少合法 target_user_id", msg_id=msg_id)
         return
 
-    if not is_user_online(target_user_id):
+    online_node = get_user_online_node(target_user_id)
+    if not online_node:
         await send_error(websocket, "目标用户当前不在线，暂时无法创建私聊会话", msg_id=msg_id, code=404)
         return
 
@@ -103,40 +108,26 @@ async def handle_private_chat(websocket, proto: dict):
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
         return
 
-    response = build_message(
-        "private_chat",
+    await deliver_private_message_locally(
         msg_id=msg_id,
-        code=200,
-        content={
+        conversation_id=conversation_id,
+        from_user_id=ctx.user_id,
+        to_user_id=target_user_id,
+        text=text.strip(),
+    )
+    publish_distributed_message(
+        {
+            "source_node_id": NODE_ID,
+            "msg_id": msg_id,
+            "msg_type": "private_chat",
             "conversation_id": conversation_id,
             "from_user_id": ctx.user_id,
             "to_user_id": target_user_id,
-            "text": text.strip(),
-        },
-    )
-
-    # 发给发送者自己
-    await send_json(websocket, response)
-
-    # 发给对方：在线就发，不在线就存离线
-    target_websockets = get_online_websockets_by_user_id(target_user_id)
-    if target_websockets:
-        for target_ws in target_websockets:
-            await send_json(target_ws, response)
-    else:
-        store_offline_message(
-            target_user_id,
-            {
-                "msg_id": msg_id,
-                "conversation_id": conversation_id,
-                "from_user_id": ctx.user_id,
-                "msg_type": "private_chat",
-                "payload": {
-                    "text": text.strip(),
-                },
-                "timestamp": int(time()),
+            "payload": {
+                "text": text.strip(),
             },
-        )
+        }
+    )
 
     response = build_message(
         "private_chat",
