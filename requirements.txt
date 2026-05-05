@@ -1,0 +1,3 @@
+PyJWT~=2.12.1
+websockets~=16.0
+redis>=5.0.0
