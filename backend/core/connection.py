@@ -15,7 +15,7 @@ from backend.config import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
 from backend.handlers.user_list import handle_get_online_users
 from backend.handlers.room import (
     handle_create_room,
-    handle_get_participants,
+    handle_get_room_members,
     handle_join_room,
     handle_leave_room,
     handle_room_chat,
@@ -28,7 +28,7 @@ from backend.core.offline_message_service import get_offline_messages, clear_off
 from backend.core.protocol import build_message, parse_protocol, send_error, send_json, validate_protocol
 from backend.handlers.token import handle_refresh_token
 from backend.config import NODE_ID
-from backend.core.online_registry_service import clear_user_online, set_user_online
+from backend.core.online_presence_service import start_online_presence, stop_online_presence
 
 
 def extract_token_from_path(path: str) -> str | None:
@@ -50,8 +50,7 @@ async def bind_context_from_token(websocket, token: str | None):
     ctx.is_authenticated = True
     ctx.token_exp = get_token_exp_ts(payload)
 
-    set_user_online(ctx.user_id, NODE_ID)
-
+    start_online_presence(websocket)
 
 async def check_connection_auth(server_obj, request):
     token = extract_token_from_path(request.path)
@@ -114,7 +113,7 @@ async def dispatch_message(websocket, proto: dict):
     elif msg_type == "leave_room":
         await handle_leave_room(websocket, proto)
     elif msg_type == "get_room_members":
-        await handle_get_participants(websocket, proto)
+        await handle_get_room_members(websocket, proto)
     elif msg_type == "room_chat":
         await handle_room_chat(websocket, proto)
     elif msg_type == "create_private_conversation":
@@ -175,13 +174,10 @@ async def handle_client(websocket):
             except Exception:
                 logger.exception("清理心跳任务失败")
 
-        if ctx and ctx.user_id:
-            try:
-                clear_user_online(ctx.user_id, NODE_ID)
-            except Exception:
-                pass
+        await stop_online_presence(websocket)
 
         connections.pop(websocket, None)
+
         logger.info("连接清理完成：online=%s", len(connections))
 
 

@@ -1,15 +1,17 @@
 import asyncio
 import json
 import threading
-from time import time
 
 from backend.config import NODE_ID, REDIS_KEY_PREFIX
+from backend.core.dedupe_service import (
+    has_node_delivery_processed,
+    mark_node_delivery_processed,
+)
 from backend.core.local_delivery_service import (
     deliver_private_message_online_only_locally,
     deliver_room_message_online_only_locally,
 )
 from backend.core.redis_client import redis_client
-from backend.core.state import processed_message_keys
 
 PUBSUB_CHANNEL = f"{REDIS_KEY_PREFIX}:messages"
 
@@ -87,8 +89,7 @@ async def handle_distributed_message(message: dict) -> None:
     if not isinstance(text, str) or not text.strip():
         return
 
-    dedupe_key = f"{from_user_id}:{msg_id}"
-    if dedupe_key in processed_message_keys:
+    if has_node_delivery_processed(NODE_ID, from_user_id, msg_id):
         return
 
     if msg_type == "room_chat":
@@ -113,4 +114,4 @@ async def handle_distributed_message(message: dict) -> None:
     else:
         return
 
-    processed_message_keys[dedupe_key] = int(time())
+    mark_node_delivery_processed(NODE_ID, from_user_id, msg_id)

@@ -2,6 +2,8 @@ from backend.config import TEST_ACCOUNTS
 from backend.core.auth import decode_jwt_token, generate_jwt_token, get_token_exp_ts
 from backend.core.protocol import build_message, send_error, send_json
 from backend.utils.logger import logger
+from backend.core.online_presence_service import start_online_presence
+from backend.core.state import connections
 
 
 async def handle_login(websocket, proto: dict):
@@ -28,6 +30,13 @@ async def handle_login(websocket, proto: dict):
     token = generate_jwt_token(username)
     payload = decode_jwt_token(token) or {}
     expires_at = get_token_exp_ts(payload)
+
+    ctx = connections[websocket]
+    ctx.user_id = username
+    ctx.is_authenticated = True
+    ctx.token_exp = expires_at
+
+    start_online_presence(websocket)
 
     logger.info("登录成功：user=%s", username)
 
