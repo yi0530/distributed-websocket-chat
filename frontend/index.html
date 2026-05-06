@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>分布式 WebSocket 聊天系统调试台</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #6b7280;
+      --border: #d9e0ee;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --soft: #eef4ff;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --warning: #d97706;
+      --log-bg: #09111f;
+      --log-text: #dce8ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .page {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 380px 380px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    .section-title {
+      font-weight: 700;
+      font-size: 14px;
+      margin: 14px 0 8px;
+      color: #374151;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 8px 0 5px;
+    }
+
+    input, textarea, select, button {
+      width: 100%;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      padding: 9px 10px;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      line-height: 1.45;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      color: white;
+      background: var(--primary);
+      font-weight: 700;
+      margin-top: 8px;
+      transition: 0.15s ease;
+    }
+
+    button:hover { background: var(--primary-dark); }
+    button.secondary {
+      color: var(--primary-dark);
+      background: var(--soft);
+      border: 1px solid #c8d8ff;
+    }
+    button.secondary:hover { background: #dfeaff; }
+    button.danger { background: var(--danger); }
+    button.danger:hover { background: #b91c1c; }
+    button.success { background: var(--success); }
+    button.success:hover { background: #15803d; }
+    button.warning { background: var(--warning); }
+    button.warning:hover { background: #b45309; }
+
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .row3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #f3f4f6;
+      color: #4b5563;
+      margin-bottom: 8px;
+    }
+
+    .status.connected {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status.connecting {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+      margin-top: 8px;
+    }
+
+    .tiny {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0;
+    }
+
+    .pill {
+      border-radius: 999px;
+      padding: 5px 8px;
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 12px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .log {
+      height: 78vh;
+      min-height: 680px;
+      overflow: auto;
+      background: var(--log-bg);
+      color: var(--log-text);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log-line-send { color: #93c5fd; }
+    .log-line-recv { color: #bbf7d0; }
+    .log-line-error { color: #fecaca; }
+    .log-line-info { color: #dce8ff; }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .token-box {
+      height: 72px;
+      min-height: 72px;
+      background: #f8fbff;
+    }
+
+    .saved-box {
+      background: #f8fbff;
+      border: 1px dashed #bfd0f7;
+      border-radius: 10px;
+      padding: 9px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      color: #334155;
+      min-height: 48px;
+      word-break: break-all;
+    }
+
+    @media (max-width: 1180px) {
+      .grid { grid-template-columns: 1fr; }
+      .log { height: 520px; min-height: 520px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <h1>分布式 WebSocket 聊天系统调试台</h1>
+        <div class="subtitle">支持双节点、双用户、登录、Token 重连、私聊、群聊、离线补发、原始 JSON 和运行日志。</div>
+      </div>
+      <div class="pill-row">
+        <span class="pill">node_a: 8765</span>
+        <span class="pill">node_b: 8766</span>
+        <span class="pill">msg_id 自动生成</span>
+        <span class="pill">conversation_id 自动保存</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>客户端 A</h2>
+          <div id="statusA" class="status">未连接</div>
+
+          <label>WebSocket 地址</label>
+          <input id="urlA" value="ws://47.94.251.188:8765" />
+
+          <div class="row2">
+            <div>
+              <label>用户名</label>
+              <input id="userA" value="user001" />
+            </div>
+            <div>
+              <label>密码</label>
+              <input id="passA" value="123456" />
+            </div>
+          </div>
+
+          <label>Token</label>
+          <textarea id="tokenA" class="token-box" placeholder="登录成功后自动填入"></textarea>
+
+          <div class="row2">
+            <button onclick="connectClient('A', false)">匿名连接</button>
+            <button class="secondary" onclick="connectClient('A', true)">Token 连接</button>
+          </div>
+          <div class="row2">
+            <button class="success" onclick="loginClient('A')">登录</button>
+            <button class="danger" onclick="disconnectClient('A')">断开</button>
+          </div>
+          <button class="secondary" onclick="sendHeartbeat('A')">发送 heartbeat</button>
+        </div>
+
+        <div class="card">
+          <h2>客户端 A 业务操作</h2>
+
+          <div class="section-title">私聊</div>
+          <label>目标用户</label>
+          <input id="privateTargetA" value="user002" />
+          <button onclick="createPrivateConversation('A')">创建 / 获取私聊 conversation</button>
+
+          <label>私聊 conversation_id</label>
+          <input id="privateConvId" placeholder="创建私聊后自动填入，也可手动粘贴" />
+
+          <label>私聊内容</label>
+          <input id="privateTextA" value="来自 user001 的私聊测试" />
+          <button onclick="sendPrivateChat('A')">发送私聊</button>
+
+          <div class="section-title">群聊</div>
+          <label>群聊名称</label>
+          <input id="roomNameA" value="远程部署联调群" />
+          <button onclick="createRoom('A')">创建群聊</button>
+
+          <label>群聊 conversation_id</label>
+          <input id="roomConvId" placeholder="创建群聊后自动填入，也可手动粘贴" />
+
+          <label>群聊内容</label>
+          <input id="roomTextA" value="来自 user001 的群聊测试" />
+          <button onclick="sendRoomChat('A')">发送群聊</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>客户端 B</h2>
+          <div id="statusB" class="status">未连接</div>
+
+          <label>WebSocket 地址</label>
+          <input id="urlB" value="ws://47.94.251.188:8766" />
+
+          <div class="row2">
+            <div>
+              <label>用户名</label>
+              <input id="userB" value="user002" />
+            </div>
+            <div>
+              <label>密码</label>
+              <input id="passB" value="654321" />
+            </div>
+          </div>
+
+          <label>Token</label>
+          <textarea id="tokenB" class="token-box" placeholder="登录成功后自动填入"></textarea>
+
+          <div class="row2">
+            <button onclick="connectClient('B', false)">匿名连接</button>
+            <button class="secondary" onclick="connectClient('B', true)">Token 连接</button>
+          </div>
+          <div class="row2">
+            <button class="success" onclick="loginClient('B')">登录</button>
+            <button class="danger" onclick="disconnectClient('B')">断开</button>
+          </div>
+          <button class="secondary" onclick="sendHeartbeat('B')">发送 heartbeat</button>
+        </div>
+
+        <div class="card">
+          <h2>客户端 B 业务操作</h2>
+
+          <div class="section-title">群聊</div>
+          <label>加入的群聊 conversation_id</label>
+          <input id="roomJoinIdB" placeholder="默认会自动同步左侧群聊 ID" />
+          <button onclick="joinRoom('B')">加入群聊</button>
+
+          <label>群聊内容</label>
+          <input id="roomTextB" value="来自 user002 的群聊测试" />
+          <button onclick="sendRoomChat('B')">发送群聊</button>
+
+          <div class="section-title">私聊</div>
+          <label>私聊内容</label>
+          <input id="privateTextB" value="来自 user002 的私聊回复" />
+          <button onclick="sendPrivateChat('B')">发送私聊</button>
+
+          <div class="section-title">离线补发测试</div>
+          <button class="warning" onclick="disconnectClient('B')">让 B 离线</button>
+          <button onclick="sendPrivateChat('A', '离线消息测试：B 离线时由 A 发送')">A 给离线 B 发私聊</button>
+          <button class="secondary" onclick="connectClient('B', true)">B 用 Token 重连</button>
+          <div class="hint">预期：B 重连后收到离线 private_chat。</div>
+        </div>
+
+        <div class="card">
+          <h2>当前保存的 ID</h2>
+          <label>私聊 conversation_id</label>
+          <div id="savedPrivateConv" class="saved-box">未保存</div>
+          <label>群聊 conversation_id</label>
+          <div id="savedRoomConv" class="saved-box">未保存</div>
+          <button class="secondary" onclick="copySavedIds()">复制当前 ID 信息</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>运行日志</h2>
+          <div class="toolbar">
+            <button class="secondary" onclick="clearLog()">清空日志</button>
+            <button class="secondary" onclick="copyLog()">复制日志</button>
+            <button class="secondary" onclick="flushTestIds()">刷新测试 ID</button>
+            <button class="danger" onclick="disconnectAll()">全部断开</button>
+          </div>
+          <div class="hint">日志会显示所有发送和接收的 JSON。登录成功会自动提取 token，创建私聊/群聊会自动保存 conversation_id。</div>
+          <div id="log" class="log"></div>
+        </div>
+
+        <div class="card">
+          <h2>原始 JSON 发送</h2>
+          <label>选择客户端</label>
+          <select id="rawClient">
+            <option value="A">客户端 A</option>
+            <option value="B">客户端 B</option>
+          </select>
+          <label>JSON</label>
+          <textarea id="rawJson">{
+  "version": "1.0",
+  "msg_type": "heartbeat",
+  "msg_id": "manual_hb_001",
+  "need_ack": true
+}</textarea>
+          <button onclick="sendRawJson()">发送原始 JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const clients = {
+    A: { socket: null, label: '客户端 A' },
+    B: { socket: null, label: '客户端 B' },
+  };
+
+  let seq = 1;
+  let savedPrivateConversationId = '';
+  let savedRoomConversationId = '';
+
+  const $ = (id) => document.getElementById(id);
+
+  function nextMsgId(prefix) {
+    return `${prefix}_${Date.now()}_${seq++}`;
+  }
+
+  function nowText() {
+    return new Date().toLocaleTimeString();
+  }
+
+  function log(message, type = 'info') {
+    const box = $('log');
+    const line = document.createElement('div');
+    line.className = `log-line-${type}`;
+    const prefix = type === 'send' ? '[SEND]' : type === 'recv' ? '[RECV]' : type === 'error' ? '[ERROR]' : '[INFO]';
+    line.textContent = `${nowText()} ${prefix} ${message}`;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function pretty(obj) {
+    return JSON.stringify(obj, null, 2);
+  }
+
+  function setStatus(clientKey, text, state = '') {
+    const el = $(`status${clientKey}`);
+    el.textContent = text;
+    el.className = `status ${state}`.trim();
+  }
+
+  function getUrl(clientKey, withToken) {
+    const base = $(`url${clientKey}`).value.trim();
+    const token = $(`token${clientKey}`).value.trim();
+    if (!withToken || !token) return base;
+    return `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+  }
+
+  function connectClient(clientKey, withToken) {
+    const client = clients[clientKey];
+    if (client.socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(client.socket.readyState)) {
+      log(`${client.label} 已有连接或正在连接`, 'error');
+      return;
+    }
+
+    const targetUrl = getUrl(clientKey, withToken);
+    setStatus(clientKey, '连接中...', 'connecting');
+    log(`${client.label} 准备连接：${targetUrl}`);
+
+    const socket = new WebSocket(targetUrl);
+    client.socket = socket;
+
+    socket.onopen = () => {
+      setStatus(clientKey, '已连接', 'connected');
+      log(`${client.label} 连接成功`);
+    };
+
+    socket.onerror = () => {
+      setStatus(clientKey, '连接错误', 'error');
+      log(`${client.label} 连接错误：请检查服务是否启动、端口是否开放、防火墙是否放行`, 'error');
+    };
+
+    socket.onclose = (event) => {
+      setStatus(clientKey, `已断开 code=${event.code}`, '');
+      log(`${client.label} 连接关闭：code=${event.code} reason=${event.reason || '无'}`);
+      if (client.socket === socket) client.socket = null;
+    };
+
+    socket.onmessage = (event) => {
+      log(`${client.label} 收到：${event.data}`, 'recv');
+      handleIncomingMessage(clientKey, event.data);
+    };
+  }
+
+  function disconnectClient(clientKey) {
+    const client = clients[clientKey];
+    if (!client.socket) {
+      log(`${client.label} 当前没有连接`);
+      return;
+    }
+    client.socket.close(1000, 'manual close');
+  }
+
+  function disconnectAll() {
+    disconnectClient('A');
+    disconnectClient('B');
+  }
+
+  function sendObject(clientKey, obj) {
+    const client = clients[clientKey];
+    if (!client.socket || client.socket.readyState !== WebSocket.OPEN) {
+      log(`${client.label} 未连接，无法发送`, 'error');
+      return;
+    }
+    const text = JSON.stringify(obj);
+    client.socket.send(text);
+    log(`${client.label} 发送：${pretty(obj)}`, 'send');
+  }
+
+  function loginClient(clientKey) {
+    sendObject(clientKey, {
+      version: '1.0',
+      msg_type: 'login',
+      msg_id: nextMsgId(`login_${clientKey}`),
+      from: $(`user${clientKey}`).value.trim(),
+      content: $(`pass${clientKey}`).value.trim(),
+    });
+  }
+
+  function sendHeartbeat(clientKey) {
+    sendObject(clientKey, {
+      version: '1.0',
+      msg_type: 'heartbeat',
+      msg_id: nextMsgId(`heartbeat_${clientKey}`),
+      need_ack: true,
+    });
+  }
+
+  function createPrivateConversation(clientKey) {
+    const target = clientKey === 'A' ? $('privateTargetA').value.trim() : $('userA').value.trim();
+    sendObject(clientKey, {
+      version: '1.0',
+      msg_type: 'create_private_conversation',
+      msg_id: nextMsgId(`create_private_${clientKey}`),
+      target_user_id: target,
+    });
+  }
+
+  function sendPrivateChat(clientKey, overrideText) {
+    const text = overrideText || (clientKey === 'A' ? $('privateTextA').value.trim() : $('privateTextB').value.trim());
+    const conversationId = $('privateConvId').value.trim() || savedPrivateConversationId;
+    if (!conversationId) {
+      log('缺少私聊 conversation_id，请先创建 / 获取私聊 conversation', 'error');
+      return;
+    }
+    sendObject(clientKey, {
+      version: '1.0',
+      msg_type: 'private_chat',
+      msg_id: nextMsgId(`private_msg_${clientKey}`),
+      conversation_id: conversationId,
+      payload: { text },
+      need_ack: true,
+    });
+  }
+
+  function createRoom(clientKey) {
+    sendObject(clientKey, {
+      version: '1.0',
+      msg_type: 'create_room',
+      msg_id: nextMsgId(`create_room_${clientKey}`),
+      name: $('roomNameA').value.trim() || '测试群聊',
+    });
+  }
+
+  function joinRoom(clientKey) {
+    const conversationId = $('roomJoinIdB').value.trim() || $('roomConvId').value.trim() || savedRoomConversationId;
+    if (!conversationId) {
+      log('缺少群聊 conversation_id，请先创建群聊', 'error');
+      return;
+    }
+    sendObject(clientKey, {
+      version: '1.0',
+      msg_type: 'join_room',
+      msg_id: nextMsgId(`join_room_${clientKey}`),
+      conversation_id: conversationId,
+    });
+  }
+
+  function sendRoomChat(clientKey) {
+    const text = clientKey === 'A' ? $('roomTextA').value.trim() : $('roomTextB').value.trim();
+    const conversationId = $('roomConvId').value.trim() || savedRoomConversationId;
+    if (!conversationId) {
+      log('缺少群聊 conversation_id，请先创建群聊', 'error');
+      return;
+    }
+    sendObject(clientKey, {
+      version: '1.0',
+      msg_type: 'room_chat',
+      msg_id: nextMsgId(`room_msg_${clientKey}`),
+      conversation_id: conversationId,
+      payload: { text },
+      need_ack: true,
+    });
+  }
+
+  function sendRawJson() {
+    try {
+      const obj = JSON.parse($('rawJson').value);
+      sendObject($('rawClient').value, obj);
+    } catch (err) {
+      log(`原始 JSON 不合法：${err.message}`, 'error');
+    }
+  }
+
+  function handleIncomingMessage(clientKey, raw) {
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (_) {
+      return;
+    }
+
+    if (data.msg_type === 'login' && data.code === 200 && data.content) {
+      const token = typeof data.content === 'string' ? data.content : data.content.token;
+      if (token) {
+        $(`token${clientKey}`).value = token;
+        log(`${clients[clientKey].label} 已自动保存 token`);
+      }
+    }
+
+    if (data.msg_type === 'private_conversation_created' && data.code === 200 && data.content) {
+      const id = data.content.conversation_id;
+      if (id) {
+        savedPrivateConversationId = id;
+        $('privateConvId').value = id;
+        $('savedPrivateConv').textContent = id;
+        log(`已保存私聊 conversation_id：${id}`);
+      }
+    }
+
+    if (data.msg_type === 'room_created' && data.code === 200 && data.content) {
+      const id = data.content.conversation_id;
+      if (id) {
+        savedRoomConversationId = id;
+        $('roomConvId').value = id;
+        $('roomJoinIdB').value = id;
+        $('savedRoomConv').textContent = id;
+        log(`已保存群聊 conversation_id：${id}`);
+      }
+    }
+  }
+
+  function copySavedIds() {
+    const text = `private_conversation_id=${savedPrivateConversationId || $('privateConvId').value.trim()}\nroom_conversation_id=${savedRoomConversationId || $('roomConvId').value.trim()}`;
+    navigator.clipboard.writeText(text).then(() => log('已复制当前 ID 信息')).catch(() => log('复制失败，请手动复制', 'error'));
+  }
+
+  function clearLog() {
+    $('log').innerHTML = '';
+  }
+
+  function copyLog() {
+    navigator.clipboard.writeText($('log').innerText).then(() => log('日志已复制')).catch(() => log('复制日志失败', 'error'));
+  }
+
+  function flushTestIds() {
+    seq = 1;
+    log('测试 msg_id 序号已重置。注意：如果 Redis 去重 key 还在，不建议重复使用旧 msg_id。');
+  }
+
+  log('调试台已就绪。推荐顺序：A/B 匿名连接 → A/B 登录 → A/B Token 重连 → A 创建私聊 → A/B 私聊 → A 创建群聊 → B 加群 → A/B 群聊 → B 离线补发测试。');
+</script>
+</body>
+</html>
