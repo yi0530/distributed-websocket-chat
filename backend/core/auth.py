@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -8,7 +8,7 @@ from backend.config import JWT_ALGORITHM, JWT_EXP_HOURS, JWT_SECRET
 
 
 def generate_jwt_token(user_id: str) -> str:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     payload = {
         "jti": str(uuid.uuid4()),
         "sub": user_id,
