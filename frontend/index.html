@@ -303,26 +303,26 @@
           <div class="section-title">私聊</div>
           <label>目标用户</label>
           <input id="privateTargetA" value="user002" />
-          <button onclick="createPrivateConversation('A')">创建 / 获取私聊 conversation</button>
+          <button id="createPrivateBtnA" onclick="createPrivateConversation('A')">创建 / 获取私聊 conversation</button>
 
           <label>私聊 conversation_id</label>
-          <input id="privateConvId" placeholder="创建私聊后自动填入，也可手动粘贴" />
+          <input id="privateConvIdA" placeholder="创建私聊后自动填入" readonly />
 
           <label>私聊内容</label>
           <input id="privateTextA" value="来自 user001 的私聊测试" />
-          <button onclick="sendPrivateChat('A')">发送私聊</button>
+          <button id="sendPrivateBtnA" onclick="sendPrivateChat('A')">发送私聊</button>
 
           <div class="section-title">群聊</div>
           <label>群聊名称</label>
           <input id="roomNameA" value="远程部署联调群" />
-          <button onclick="createRoom('A')">创建群聊</button>
+          <button id="createRoomBtnA" onclick="createRoom('A')">创建群聊</button>
 
           <label>群聊 conversation_id</label>
-          <input id="roomConvId" placeholder="创建群聊后自动填入，也可手动粘贴" />
+          <input id="roomConvIdA" placeholder="创建群聊后自动填入" readonly />
 
           <label>群聊内容</label>
           <input id="roomTextA" value="来自 user001 的群聊测试" />
-          <button onclick="sendRoomChat('A')">发送群聊</button>
+          <button id="sendRoomBtnA" onclick="sendRoomChat('A')">发送群聊</button>
         </div>
       </div>
 
@@ -364,17 +364,27 @@
 
           <div class="section-title">群聊</div>
           <label>加入的群聊 conversation_id</label>
-          <input id="roomJoinIdB" placeholder="默认会自动同步左侧群聊 ID" />
-          <button onclick="joinRoom('B')">加入群聊</button>
+          <input id="roomJoinIdB" placeholder="输入 A 创建的 room_id，或由 A 创建时自动同步" />
+          <button id="joinRoomBtnB" onclick="joinRoom('B')">加入群聊</button>
+
+          <label>群聊 conversation_id</label>
+          <input id="roomConvIdB" placeholder="加入群聊后自动填入" readonly />
 
           <label>群聊内容</label>
           <input id="roomTextB" value="来自 user002 的群聊测试" />
-          <button onclick="sendRoomChat('B')">发送群聊</button>
+          <button id="sendRoomBtnB" onclick="sendRoomChat('B')">发送群聊</button>
 
           <div class="section-title">私聊</div>
+          <label>目标用户</label>
+          <input id="privateTargetB" value="user001" />
+          <button id="createPrivateBtnB" onclick="createPrivateConversation('B')">创建 / 获取私聊 conversation</button>
+
+          <label>私聊 conversation_id</label>
+          <input id="privateConvIdB" placeholder="创建私聊后自动填入" readonly />
+
           <label>私聊内容</label>
           <input id="privateTextB" value="来自 user002 的私聊回复" />
-          <button onclick="sendPrivateChat('B')">发送私聊</button>
+          <button id="sendPrivateBtnB" onclick="sendPrivateChat('B')">发送私聊</button>
 
           <div class="section-title">离线补发测试</div>
           <button class="warning" onclick="disconnectClient('B')">让 B 离线</button>
@@ -384,11 +394,7 @@
         </div>
 
         <div class="card">
-          <h2>当前保存的 ID</h2>
-          <label>私聊 conversation_id</label>
-          <div id="savedPrivateConv" class="saved-box">未保存</div>
-          <label>群聊 conversation_id</label>
-          <div id="savedRoomConv" class="saved-box">未保存</div>
+          <h2>调试信息</h2>
           <button class="secondary" onclick="copySavedIds()">复制当前 ID 信息</button>
         </div>
       </div>
@@ -478,6 +484,47 @@
     el.className = `status ${state}`.trim();
   }
 
+  function updateButtons(clientKey) {
+    const client = clients[clientKey];
+    const connected = client.socket && client.socket.readyState === WebSocket.OPEN;
+    const loggedIn = !!client.userId;
+    const hasRoom = !!client.roomConversationId;
+    const hasPrivate = !!client.privateConversationId;
+
+    const ids = clientKey === 'A'
+      ? ['createPrivateBtnA', 'sendPrivateBtnA', 'createRoomBtnA', 'sendRoomBtnA']
+      : ['createPrivateBtnB', 'sendPrivateBtnB', 'joinRoomBtnB', 'sendRoomBtnB'];
+
+    ids.forEach(function(id) {
+      const btn = $(id);
+      if (!btn) return;
+      if (!connected || !loggedIn) {
+        btn.disabled = true;
+      } else if (id.startsWith('sendRoom') && !hasRoom) {
+        btn.disabled = true;
+      } else if (id.startsWith('sendPrivate') && !hasPrivate) {
+        btn.disabled = true;
+      } else {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  function resetClientState(clientKey) {
+    const client = clients[clientKey];
+
+    client.socket = null;
+    client.token = '';
+    client.userId = '';
+    client.privateConversationId = '';
+    client.roomConversationId = '';
+
+    $('privateConvId' + clientKey).value = '';
+    $('roomConvId' + clientKey).value = '';
+
+    updateButtons(clientKey);
+  }
+
   function getUrl(clientKey, withToken) {
     const base = $(`url${clientKey}`).value.trim();
     const token = $(`token${clientKey}`).value.trim();
@@ -501,6 +548,7 @@
 
     socket.onopen = () => {
       setStatus(clientKey, '已连接', 'connected');
+      updateButtons(clientKey);
       log(`${client.label} 连接成功`);
     };
 
@@ -512,7 +560,9 @@
     socket.onclose = (event) => {
       setStatus(clientKey, `已断开 code=${event.code}`, '');
       log(`${client.label} 连接关闭：code=${event.code} reason=${event.reason || '无'}`);
-      if (client.socket === socket) client.socket = null;
+      if (client.socket === socket) {
+        resetClientState(clientKey);
+      }
     };
 
     socket.onmessage = (event) => {
@@ -524,18 +574,12 @@
   function disconnectClient(clientKey) {
     const client = clients[clientKey];
     if (!client.socket) {
-      log(`${client.label} 当前没有连接`);
+      resetClientState(clientKey);
+      log(`${client.label} 当前没有连接，状态已清理`);
       return;
     }
     client.socket.close(1000, 'manual close');
-
-    client.socket = null;
-    client.token = '';
-    client.userId = '';
-    client.privateConversationId = '';
-    client.roomConversationId = '';
-
-    log(`${client.label} 已断开，状态已清理`);
+    // onclose 回调中会调用 resetClientState
   }
 
   function disconnectAll() {
@@ -555,6 +599,11 @@
   }
 
   function loginClient(clientKey) {
+    const client = clients[clientKey];
+    if (client.userId) {
+      log(client.label + ' 已登录为 ' + client.userId + '，请先断开再切换账号', 'error');
+      return;
+    }
     sendObject(clientKey, {
       version: '1.0',
       msg_type: 'login',
@@ -574,7 +623,7 @@
   }
 
   function createPrivateConversation(clientKey) {
-    const target = clientKey === 'A' ? $('privateTargetA').value.trim() : $('userA').value.trim();
+    const target = $('privateTarget' + clientKey).value.trim();
     sendObject(clientKey, {
       version: '1.0',
       msg_type: 'create_private_conversation',
@@ -611,7 +660,7 @@
   }
 
   function joinRoom(clientKey) {
-    const conversationId = $('roomJoinIdB').value.trim() || $('roomConvId').value.trim() || clients[clientKey].roomConversationId;
+    const conversationId = $('roomJoinIdB').value.trim() || $('roomConvIdA').value.trim() || clients[clientKey].roomConversationId;
     if (!conversationId) {
       log('缺少群聊 conversation_id，请先创建群聊', 'error');
       return;
@@ -668,6 +717,7 @@
         client.token = token;
         client.userId = $('user' + clientKey).value.trim();
         $('token' + clientKey).value = token;
+        updateButtons(clientKey);
         log(client.label + ' 已登录，已保存 token');
       }
     }
@@ -677,8 +727,8 @@
       const id = data.content.conversation_id;
       if (id) {
         client.privateConversationId = id;
-        $('privateConvId').value = id;
-        $('savedPrivateConv').textContent = client.label + ' 私聊: ' + id;
+        $('privateConvId' + clientKey).value = id;
+        updateButtons(clientKey);
         log(client.label + ' 已保存私聊 conversation_id：' + id);
       }
     }
@@ -688,9 +738,9 @@
       const id = data.content.conversation_id;
       if (id) {
         client.roomConversationId = id;
-        $('roomConvId').value = id;
+        $('roomConvId' + clientKey).value = id;
         $('roomJoinIdB').value = id;
-        $('savedRoomConv').textContent = client.label + ' 群聊: ' + id;
+        updateButtons(clientKey);
         log(client.label + ' 已保存群聊 conversation_id：' + id);
       }
     }
@@ -700,8 +750,8 @@
       const id = data.content.conversation_id;
       if (id) {
         client.roomConversationId = id;
-        $('roomConvId').value = id;
-        $('savedRoomConv').textContent = client.label + ' 群聊: ' + id;
+        $('roomConvId' + clientKey).value = id;
+        updateButtons(clientKey);
         log(client.label + ' 已加入群聊并保存 room conversation_id：' + id);
       }
     }
@@ -712,17 +762,24 @@
 
       if (err.includes('不属于该私聊') || err.includes('私聊会话')) {
         client.privateConversationId = '';
+        $('privateConvId' + clientKey).value = '';
+        updateButtons(clientKey);
         log(client.label + ' 私聊会话 ID 可能属于旧账号，已清理，请重新创建私聊', 'error');
       }
 
       if (err.includes('不在该会话')) {
         client.roomConversationId = '';
+        $('roomConvId' + clientKey).value = '';
+        updateButtons(clientKey);
         log(client.label + ' 群聊会话 ID 可能属于旧账号，已清理，请重新创建或加入群聊', 'error');
       }
 
       if (err.includes('会话不存在')) {
         client.privateConversationId = '';
         client.roomConversationId = '';
+        $('privateConvId' + clientKey).value = '';
+        $('roomConvId' + clientKey).value = '';
+        updateButtons(clientKey);
         log(client.label + ' 会话不存在，已清理旧 ID，请重新创建', 'error');
       }
     }
@@ -755,6 +812,8 @@
     log('测试 msg_id 序号已重置。注意：如果 Redis 去重 key 还在，不建议重复使用旧 msg_id。');
   }
 
+  updateButtons('A');
+  updateButtons('B');
   log('调试台已就绪。推荐顺序：A/B 匿名连接 → A/B 登录 → A/B Token 重连 → A 创建私聊 → A/B 私聊 → A 创建群聊 → B 加群 → A/B 群聊 → B 离线补发测试。');
 </script>
 </body>
