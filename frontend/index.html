@@ -428,13 +428,25 @@
 
 <script>
   const clients = {
-    A: { socket: null, label: '客户端 A' },
-    B: { socket: null, label: '客户端 B' },
+    A: {
+      socket: null,
+      label: '客户端 A',
+      token: '',
+      userId: '',
+      privateConversationId: '',
+      roomConversationId: '',
+    },
+    B: {
+      socket: null,
+      label: '客户端 B',
+      token: '',
+      userId: '',
+      privateConversationId: '',
+      roomConversationId: '',
+    },
   };
 
   let seq = 1;
-  let savedPrivateConversationId = '';
-  let savedRoomConversationId = '';
 
   const $ = (id) => document.getElementById(id);
 
@@ -516,6 +528,14 @@
       return;
     }
     client.socket.close(1000, 'manual close');
+
+    client.socket = null;
+    client.token = '';
+    client.userId = '';
+    client.privateConversationId = '';
+    client.roomConversationId = '';
+
+    log(`${client.label} 已断开，状态已清理`);
   }
 
   function disconnectAll() {
@@ -565,9 +585,10 @@
 
   function sendPrivateChat(clientKey, overrideText) {
     const text = overrideText || (clientKey === 'A' ? $('privateTextA').value.trim() : $('privateTextB').value.trim());
-    const conversationId = $('privateConvId').value.trim() || savedPrivateConversationId;
+    const client = clients[clientKey];
+    const conversationId = client.privateConversationId;
     if (!conversationId) {
-      log('缺少私聊 conversation_id，请先创建 / 获取私聊 conversation', 'error');
+      log('当前客户端缺少私聊 conversation_id，请先创建 / 获取私聊会话。', 'error');
       return;
     }
     sendObject(clientKey, {
@@ -590,7 +611,7 @@
   }
 
   function joinRoom(clientKey) {
-    const conversationId = $('roomJoinIdB').value.trim() || $('roomConvId').value.trim() || savedRoomConversationId;
+    const conversationId = $('roomJoinIdB').value.trim() || $('roomConvId').value.trim() || clients[clientKey].roomConversationId;
     if (!conversationId) {
       log('缺少群聊 conversation_id，请先创建群聊', 'error');
       return;
@@ -605,9 +626,10 @@
 
   function sendRoomChat(clientKey) {
     const text = clientKey === 'A' ? $('roomTextA').value.trim() : $('roomTextB').value.trim();
-    const conversationId = $('roomConvId').value.trim() || savedRoomConversationId;
+    const client = clients[clientKey];
+    const conversationId = client.roomConversationId;
     if (!conversationId) {
-      log('缺少群聊 conversation_id，请先创建群聊', 'error');
+      log('当前客户端缺少群聊 conversation_id，请先创建或加入群聊。', 'error');
       return;
     }
     sendObject(clientKey, {
@@ -637,38 +659,86 @@
       return;
     }
 
+    const client = clients[clientKey];
+
+    // —— 登录成功：保存 token + userId ——
     if (data.msg_type === 'login' && data.code === 200 && data.content) {
       const token = typeof data.content === 'string' ? data.content : data.content.token;
       if (token) {
-        $(`token${clientKey}`).value = token;
-        log(`${clients[clientKey].label} 已自动保存 token`);
+        client.token = token;
+        client.userId = $('user' + clientKey).value.trim();
+        $('token' + clientKey).value = token;
+        log(client.label + ' 已登录，已保存 token');
       }
     }
 
+    // —— 私聊创建成功：按客户端保存 ——
     if (data.msg_type === 'private_conversation_created' && data.code === 200 && data.content) {
       const id = data.content.conversation_id;
       if (id) {
-        savedPrivateConversationId = id;
+        client.privateConversationId = id;
         $('privateConvId').value = id;
-        $('savedPrivateConv').textContent = id;
-        log(`已保存私聊 conversation_id：${id}`);
+        $('savedPrivateConv').textContent = client.label + ' 私聊: ' + id;
+        log(client.label + ' 已保存私聊 conversation_id：' + id);
       }
     }
 
+    // —— 群聊创建成功：按客户端保存 ——
     if (data.msg_type === 'room_created' && data.code === 200 && data.content) {
       const id = data.content.conversation_id;
       if (id) {
-        savedRoomConversationId = id;
+        client.roomConversationId = id;
         $('roomConvId').value = id;
         $('roomJoinIdB').value = id;
-        $('savedRoomConv').textContent = id;
-        log(`已保存群聊 conversation_id：${id}`);
+        $('savedRoomConv').textContent = client.label + ' 群聊: ' + id;
+        log(client.label + ' 已保存群聊 conversation_id：' + id);
+      }
+    }
+
+    // —— 加入群聊成功：按客户端保存 ——
+    if (data.msg_type === 'room_joined' && data.code === 200 && data.content) {
+      const id = data.content.conversation_id;
+      if (id) {
+        client.roomConversationId = id;
+        $('roomConvId').value = id;
+        $('savedRoomConv').textContent = client.label + ' 群聊: ' + id;
+        log(client.label + ' 已加入群聊并保存 room conversation_id：' + id);
+      }
+    }
+
+    // —— 错误处理：根据错误类型清理当前客户端的旧 conversation_id ——
+    if (data.code && data.code >= 400 && data.err_msg) {
+      const err = data.err_msg;
+
+      if (err.includes('不属于该私聊') || err.includes('私聊会话')) {
+        client.privateConversationId = '';
+        log(client.label + ' 私聊会话 ID 可能属于旧账号，已清理，请重新创建私聊', 'error');
+      }
+
+      if (err.includes('不在该会话')) {
+        client.roomConversationId = '';
+        log(client.label + ' 群聊会话 ID 可能属于旧账号，已清理，请重新创建或加入群聊', 'error');
+      }
+
+      if (err.includes('会话不存在')) {
+        client.privateConversationId = '';
+        client.roomConversationId = '';
+        log(client.label + ' 会话不存在，已清理旧 ID，请重新创建', 'error');
       }
     }
   }
 
   function copySavedIds() {
-    const text = `private_conversation_id=${savedPrivateConversationId || $('privateConvId').value.trim()}\nroom_conversation_id=${savedRoomConversationId || $('roomConvId').value.trim()}`;
+    const a = clients.A;
+    const b = clients.B;
+    const text = [
+      '客户端 A:',
+      '  private: ' + (a.privateConversationId || '无'),
+      '  room:     ' + (a.roomConversationId || '无'),
+      '客户端 B:',
+      '  private: ' + (b.privateConversationId || '无'),
+      '  room:     ' + (b.roomConversationId || '无'),
+    ].join('\n');
     navigator.clipboard.writeText(text).then(() => log('已复制当前 ID 信息')).catch(() => log('复制失败，请手动复制', 'error'));
   }
 
