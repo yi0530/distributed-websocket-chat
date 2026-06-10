@@ -57,6 +57,26 @@ def get_cpu_percent(pid: int) -> float:
         return 0
 
 
+async def monitor_process(pid: int, port: int, interval: float = 0.5) -> dict:
+    """后台采样：每 interval 秒采集 RSS/CPU/ESTAB，记录峰值。"""
+    peak = {"rss_mb": 0.0, "cpu_pct": 0.0, "established": 0}
+    if pid <= 0:
+        print("  !! server-pid=0，无法采集资源数据")
+        return peak
+    try:
+        while True:
+            rss = get_server_stats(pid).get("rss_mb", 0)
+            cpu = get_cpu_percent(pid)
+            est = count_established(port)
+            if rss > peak["rss_mb"]: peak["rss_mb"] = rss
+            if cpu > peak["cpu_pct"]: peak["cpu_pct"] = cpu
+            if est > peak["established"]: peak["established"] = est
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
+    return peak
+
+
 async def poll_client(host: str, port: int, idx: int, duration: float) -> dict:
     """一个长轮询客户端：持续发送 /poll 请求直到 duration 结束。"""
     result = {
@@ -122,18 +142,21 @@ async def run_long_poll_test(host: str, port: int, connections: int,
     est_before = count_established(port)
     t_start = time.time()
 
+    # 启动后台资源采样
+    monitor_task = asyncio.create_task(monitor_process(server_pid, port))
+
     tasks = [asyncio.create_task(poll_client(host, port, i, duration))
              for i in range(connections)]
 
     results = await asyncio.gather(*tasks)
+
+    # 停止采样
+    monitor_task.cancel()
+    try: await monitor_task
+    except asyncio.CancelledError: pass
+    peak = monitor_task.result()
+
     t_end = time.time()
-
-    # 等一小段时间让服务器也释放完连接
-    await asyncio.sleep(2)
-
-    rss_peak = get_server_stats(server_pid).get("rss_mb", 0)
-    est_peak = count_established(port)
-    cpu_peak = get_cpu_percent(server_pid)
 
     total_polls = sum(r["polls"] for r in results)
     success = sum(r["poll_success"] for r in results)
@@ -153,9 +176,9 @@ async def run_long_poll_test(host: str, port: int, connections: int,
         "errors": len(all_errors),
         "error_rate_pct": round(fail / max(total_polls, 1) * 100, 1),
         "server_rss_mb_before": rss_before,
-        "server_rss_mb_peak": rss_peak,
-        "server_cpu_pct_peak": cpu_peak,
-        "established_connections_peak": est_peak,
+        "server_rss_mb_peak": peak["rss_mb"],
+        "server_cpu_pct_peak": peak["cpu_pct"],
+        "established_connections_peak": peak["established"],
         "established_connections_before": est_before,
         "duration_sec": round(t_end - t_start, 1),
     }
@@ -170,8 +193,8 @@ async def run_long_poll_test(host: str, port: int, connections: int,
     print(f"  客户端数: {connections}")
     print(f"  总轮询次数: {total_polls}  成功: {success}  失败: {fail}")
     print(f"  平均轮询延迟: {summary['avg_poll_latency_ms']}ms  最大: {summary['max_poll_latency_ms']}ms")
-    print(f"  服务器内存: {rss_before}MB → 峰值 {rss_peak}MB")
-    print(f"  ESTAB 连接: {est_before} → 峰值 {est_peak}")
+    print(f"  服务器内存: {rss_before}MB → 峰值 {peak['rss_mb']}MB")
+    print(f"  ESTAB 连接: {est_before} → 峰值 {peak['established']}")
     if summary["error_rate_pct"] > 10:
         print("  !! 错误率超过 10%，建议停止更高规模测试\n")
     return summary

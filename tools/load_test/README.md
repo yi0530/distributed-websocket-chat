@@ -58,6 +58,25 @@ python tools/load_test/ws_load_test.py --mode broadcast --connections 10
 - 无第三方依赖（仅标准库）
 - Linux 服务器（/proc 资源监控）
 
+## 资源监控
+
+正式压测必须传入服务 PID 以获得有效 RSS/CPU/ESTABLISHED 峰值数据：
+
+```bash
+# 获取服务 PID
+ps aux | grep -E 'chat_server|long_poll_server'
+
+# 带资源监控的压测
+python tools/load_test/ws_load_test.py --mode idle --connections 100 \
+  --server-pid <PID> --duration 30
+
+python tools/load_test/long_poll_load_test.py --connections 100 \
+  --server-pid <PID> --duration 30
+```
+
+* 测试期间每 0.5 秒采样一次，记录 RSS/CPU/ESTABLISHED 峰值
+* 不传 --server-pid 时资源指标为 0，不得写入报告
+
 ## 注意
 
 - 优先在本地或测试环境运行

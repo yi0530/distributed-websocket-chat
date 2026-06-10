@@ -64,6 +64,29 @@ def get_cpu_percent(pid: int) -> float:
         return 0
 
 
+async def monitor_process(pid: int, port: int, interval: float = 0.5) -> dict:
+    """后台采样任务：每 interval 秒采集 RSS/CPU/ESTAB，记录峰值。"""
+    peak = {"rss_mb": 0.0, "cpu_pct": 0.0, "established": 0}
+    if pid <= 0:
+        print("  !! server-pid=0，无法采集资源数据")
+        return peak
+    try:
+        while True:
+            rss = get_server_stats(pid).get("rss_mb", 0)
+            cpu = get_cpu_percent(pid)
+            est = count_established(port)
+            if rss > peak["rss_mb"]:
+                peak["rss_mb"] = rss
+            if cpu > peak["cpu_pct"]:
+                peak["cpu_pct"] = cpu
+            if est > peak["established"]:
+                peak["established"] = est
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
+    return peak
+
+
 # ── 低层 WS 操作 ────────────────────────────────────────────────────
 
 def _mk_msg(mt, mid, **kw):
@@ -96,8 +119,9 @@ async def _ws_login(reader, writer, timeout=15):
     buf = b""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        f, _ = parse_frame(buf)
+        f, n = parse_frame(buf)
         if f:
+            buf = buf[n:]
             resp = json.loads(f.payload)
             if resp.get("code") == 200:
                 return True, round((time.time() - t0) * 1000, 1), resp
@@ -117,8 +141,9 @@ async def _ws_create_room(reader, writer, name="test", timeout=15):
     buf = b""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        f, _ = parse_frame(buf)
+        f, n = parse_frame(buf)
         if f:
+            buf = buf[n:]
             resp = json.loads(f.payload)
             if resp.get("code") == 200:
                 return resp["content"]["conversation_id"]
@@ -138,8 +163,9 @@ async def _ws_join_room(reader, writer, room_id, timeout=15):
     buf = b""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        f, _ = parse_frame(buf)
+        f, n = parse_frame(buf)
         if f:
+            buf = buf[n:]
             resp = json.loads(f.payload)
             if resp.get("code") in (200, 400):  # 400 = already joined
                 return
@@ -235,15 +261,16 @@ async def ack_isolated_batch(host, port, batch_indices, batch_size, timeout=15):
             buf = b""
             deadline = time.time() + 10
             while time.time() < deadline:
-                frame, _ = parse_frame(buf)
+                frame, n = parse_frame(buf)
                 if frame is not None:
+                    buf = buf[n:]
                     obj = json.loads(frame.payload)
                     last_msgs.append(obj.get("msg_type", "?"))
                     if obj.get("msg_type") == "ack":
                         if obj.get("content", {}).get("original_msg_id") == mid:
                             ack_ok = True; ack_ms = round((time.time() - t0) * 1000, 1)
                             break
-                    # 忽略不匹配的 ACK 和广播
+                    # 忽略不匹配的 ACK 和 room_chat 广播
                     continue
                 chunk = await asyncio.wait_for(r.read(4096), max(0.1, deadline - time.time()))
                 if not chunk: break
@@ -286,12 +313,14 @@ async def broadcast_client(host, port, idx, room_id, timeout=15):
         buf = b""
         deadline = time.time() + 10
         while time.time() < deadline:
-            frame, _ = parse_frame(buf)
+            frame, n = parse_frame(buf)
             if frame is not None:
+                buf = buf[n:]
                 obj = json.loads(frame.payload)
                 if obj.get("msg_type") == "room_chat" and obj.get("content", {}).get("text") == "broadcast-test":
                     result["broadcast_received"] = True
                     break
+                continue
             chunk = await asyncio.wait_for(r.read(4096), max(0.1, deadline - time.time()))
             if not chunk: break
             buf += chunk
@@ -313,6 +342,9 @@ async def run_idle(host, port, connections, batch_size, duration, server_pid):
     est_before = count_established(port)
     t_start = time.time()
 
+    # 启动后台资源采样
+    monitor_task = asyncio.create_task(monitor_process(server_pid, port))
+
     sem = asyncio.Semaphore(batch_size)
 
     async def _run_idle(idx):
@@ -332,10 +364,13 @@ async def run_idle(host, port, connections, batch_size, duration, server_pid):
             ok = sum(1 for x in results if x["connect_ok"])
             print(f"  进度: {done}/{connections}  ({done/elapsed:.0f}/s)  成功: {ok}")
 
+    # 停止采样
+    monitor_task.cancel()
+    try: await monitor_task
+    except asyncio.CancelledError: pass
+    peak = monitor_task.result()
+
     t_end = time.time()
-    rss_peak = get_server_stats(server_pid).get("rss_mb", 0)
-    est_peak = count_established(port)
-    cpu_peak = get_cpu_percent(server_pid)
 
     ok = [r for r in results if r["connect_ok"]]
     login_ok = [r for r in ok if r["login_ok"]]
@@ -349,14 +384,14 @@ async def run_idle(host, port, connections, batch_size, duration, server_pid):
         "avg_connect_ms": round(sum(r["connect_ms"] for r in ok) / max(len(ok), 1), 1),
         "max_connect_ms": round(max(r["connect_ms"] for r in ok) if ok else 0, 1),
         "errors": len(errors), "error_rate_pct": round(len(errors) / connections * 100, 1),
-        "server_rss_mb_before": rss_before, "server_rss_mb_peak": rss_peak,
-        "server_cpu_pct_peak": cpu_peak,
-        "established_connections_peak": est_peak,
+        "server_rss_mb_before": rss_before, "server_rss_mb_peak": peak["rss_mb"],
+        "server_cpu_pct_peak": peak["cpu_pct"],
+        "established_connections_peak": peak["established"],
         "established_connections_before": est_before,
         "duration_sec": round(t_end - t_start, 1), "idle_hold_sec": duration,
     }
 
-    _save_and_print("ws_idle", connections, summary, rss_before, rss_peak, est_before, est_peak)
+    _save_and_print("ws_idle", connections, summary, peak["rss_mb"], peak["established"])
     return summary
 
 
@@ -393,7 +428,7 @@ async def run_ack_isolated(host, port, connections, batch_size, server_pid):
         "duration_sec": round(t_end - t_start, 1), "batch_size": batch_size,
     }
 
-    _save_and_print("ws_ack", connections, summary, 0, summary["server_rss_mb_peak"], 0, 0)
+    _save_and_print("ws_ack", connections, summary)
     return summary
 
 
@@ -424,11 +459,11 @@ async def run_broadcast(host, port, connections, server_pid):
         "error_rate_pct": round((connections - len(bc)) / connections * 100, 1),
     }
 
-    _save_and_print("ws_broadcast", connections, summary, 0, 0, 0, 0)
+    _save_and_print("ws_broadcast", connections, summary)
     return summary
 
 
-def _save_and_print(prefix, connections, summary, rss_before, rss_peak, est_before, est_peak):
+def _save_and_print(prefix, connections, summary, rss_peak=0, est_peak=0):
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
     os.makedirs(out_dir, exist_ok=True)
     out_file = os.path.join(out_dir, f"{prefix}_{connections}_result.json")
