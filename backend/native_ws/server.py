@@ -28,6 +28,7 @@
 """
 
 import asyncio
+import os
 import traceback
 
 from backend.native_ws.handshake import (
@@ -38,8 +39,10 @@ from backend.native_ws.handshake import (
 from backend.native_ws.connection import NativeWebSocketConnection
 
 # 独立端口，不占用主业务 8000
-HOST = "127.0.0.1"
-PORT = 8766
+# 通过环境变量 NATIVE_WS_HOST / NATIVE_WS_PORT 配置，
+# 默认 127.0.0.1:8766（仅本地访问）
+HOST = os.getenv("NATIVE_WS_HOST", "127.0.0.1")
+PORT = int(os.getenv("NATIVE_WS_PORT", "8766"))
 
 # HTTP 头部最大 8KB（足够容纳标准 WebSocket 握手请求）
 _MAX_HEADER_BYTES = 8192
@@ -145,7 +148,9 @@ async def main():
     server = await asyncio.start_server(handle_client, HOST, PORT)
     print(f"[native_ws] 手写 RFC6455 WebSocket echo server 已启动")
     print(f"[native_ws] 地址: ws://{HOST}:{PORT}")
-    print(f"[native_ws] 主业务不受影响 (ws://{HOST}:8000)")
+    if HOST == "0.0.0.0":
+        print(f"[native_ws] 监听所有接口，外部访问请使用服务器公网 IP 或域名")
+    print(f"[native_ws] 主业务不受影响 (ws://127.0.0.1:8000)")
     print()
 
     async with server:
