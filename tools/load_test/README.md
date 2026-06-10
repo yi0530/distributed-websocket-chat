@@ -11,13 +11,34 @@
 | **HTTP Long Polling** | http:// | 双向模拟 | 每次 /poll 挂起→超时→重连 |
 | **SSE** | http:// (text/event-stream) | 单向推送 | TCP 长连接，持续保持 |
 
-报告优先对比 WebSocket vs HTTP Long Polling，SSE 作为补充对照。
+正式报告优先对比 **WebSocket vs HTTP Long Polling**，SSE 作为补充对照。
+
+## WebSocket 压测模式
+
+| 模式 | 用途 | 规模 | 说明 |
+|------|------|------|------|
+| `idle` | **1000 并发内存主对比** | 100-1000 | connect→login→保持连接，不发送聊天 |
+| `ack_isolated` | ACK 功能验证 | 100-500 | 每批独立房间，验证 msg_id 匹配的 ACK |
+| `broadcast` | 房间广播验证 | 仅 10/50 | 同房间广播，验证消息送达 |
+
+### 用法
+
+```bash
+# 1000 并发内存测试（主对照）
+python tools/load_test/ws_load_test.py --mode idle --connections 1000 --duration 30
+
+# ACK 功能验证
+python tools/load_test/ws_load_test.py --mode ack_isolated --connections 100 --batch-size 5
+
+# 小型广播验证
+python tools/load_test/ws_load_test.py --mode broadcast --connections 10
+```
 
 ## 文件说明
 
 | 文件 | 用途 |
 |------|------|
-| `ws_load_test.py` | WebSocket 1000 并发压测客户端 |
+| `ws_load_test.py` | WebSocket 压测（支持 idle/ack_isolated/broadcast 三模式） |
 | `sse_test_server.py` | 最小 SSE 服务（补充对照） |
 | `sse_load_test.py` | SSE 长连接压测客户端 |
 | `long_poll_server.py` | HTTP Long Polling 服务（主对照） |
@@ -35,6 +56,7 @@
 
 - Python 3.10+
 - 无第三方依赖（仅标准库）
+- Linux 服务器（/proc 资源监控）
 
 ## 注意
 

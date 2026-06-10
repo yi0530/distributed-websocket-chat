@@ -1,14 +1,17 @@
 """
-WebSocket 并发连接压力测试。
-
-测试 native_ws chat_server 在高并发下的表现。
-每个客户端执行最小业务链路：connect → login → join room → chat → ACK → close。
+WebSocket 并发连接压力测试 — 支持三种模式。
 
 用法:
-  python tools/load_test/ws_load_test.py --host 127.0.0.1 --port 8768 --connections 100
+  idle 模式（1000 并发内存测试）:
+    python tools/load_test/ws_load_test.py --mode idle --connections 100 --duration 30
 
-输出:
-  控制台实时进度 + results/ws_{N}_result.json
+  ack_isolated 模式（ACK 功能验证，每批独立房间）:
+    python tools/load_test/ws_load_test.py --mode ack_isolated --connections 100 --batch-size 5
+
+  broadcast 模式（小型房间广播验证，仅 10/50）:
+    python tools/load_test/ws_load_test.py --mode broadcast --connections 10
+
+输出: results/ws_{mode}_{N}_result.json
 """
 
 import argparse
@@ -16,58 +19,40 @@ import asyncio
 import json
 import os
 import time
-import struct
 import base64
 import hashlib
 import sys
 
-# 允许从项目根目录导入 native_ws frame
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from backend.native_ws.frame import build_frame, parse_frame, OPCODE_TEXT, OPCODE_CLOSE
 
-# ── 工具函数 ──────────────────────────────────────────────────────
+
+# ── 系统监控 ────────────────────────────────────────────────────────
 
 def get_server_stats(pid: int) -> dict:
-    """读取 /proc/{pid}/status 获取 RSS 内存和 CPU 信息。"""
     try:
         with open(f"/proc/{pid}/status") as f:
-            lines = f.readlines()
-        rss_kb = 0
-        for line in lines:
-            if line.startswith("VmRSS:"):
-                rss_kb = int(line.split()[1])
-                break
-        return {"rss_mb": round(rss_kb / 1024, 2)}
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return {"rss_mb": round(int(line.split()[1]) / 1024, 2)}
     except Exception:
-        return {"rss_mb": 0}
+        pass
+    return {"rss_mb": 0}
 
 
 def count_established(port: int) -> int:
-    """统计 ss -tan 中 ESTAB 状态的连接数"""
     import subprocess
     try:
         out = subprocess.check_output(
-            ["ss", "-tan", f"state established", f"sport = :{port}"],
-            text=True, stderr=subprocess.DEVNULL
+            ["ss", "-tan"], text=True, stderr=subprocess.DEVNULL
         )
-        return out.count("\n") - 1 if out else 0
+        return sum(1 for line in out.split("\n") if f":{port}" in line and "ESTAB" in line)
     except Exception:
-        try:
-            out = subprocess.check_output(
-                ["ss", "-tan"], text=True, stderr=subprocess.DEVNULL
-            )
-            count = 0
-            for line in out.split("\n"):
-                if f":{port}" in line and "ESTAB" in line:
-                    count += 1
-            return count
-        except Exception:
-            return 0
+        return 0
 
 
 def get_cpu_percent(pid: int) -> float:
-    """通过 ps 获取 CPU 使用率。"""
     import subprocess
     try:
         out = subprocess.check_output(
@@ -79,246 +64,398 @@ def get_cpu_percent(pid: int) -> float:
         return 0
 
 
-# ── WebSocket 客户端 ──────────────────────────────────────────────
+# ── 低层 WS 操作 ────────────────────────────────────────────────────
 
-async def ws_client(host: str, port: int, user_id: str, room_id: str, timeout: float = 15.0) -> dict:
-    """单个 WebSocket 客户端：完成完整业务链路，返回耗时和数据。"""
-    result = {
-        "user_id": user_id,
-        "connect_ok": False, "connect_ms": 0,
-        "login_ok": False, "login_ms": 0,
-        "chat_ok": False, "chat_ms": 0,
-        "ack_ok": False, "ack_rtt_ms": 0,
-        "error": None,
-    }
-    reader = writer = None
+def _mk_msg(mt, mid, **kw):
+    m = {"version":"1.0","msg_type":mt,"msg_id":mid,"code":200,
+         "content":None,"err_msg":"","timestamp":int(time.time())}
+    m.update(kw); return m
+
+
+async def _ws_handshake(reader, writer, host, port, timeout=15):
+    key = base64.b64encode(os.urandom(16)).decode()
+    guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+    req = f"GET / HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+    writer.write(req.encode()); await writer.drain()
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = await asyncio.wait_for(reader.read(4096), timeout)
+        if not chunk: raise Exception("no handshake")
+        data += chunk
+    if b"101" not in data:
+        raise Exception("not 101")
+
+
+async def _ws_login(reader, writer, timeout=15):
+    t0 = time.time()
+    mid = f"login-{os.urandom(3).hex()}"
+    writer.write(build_frame(OPCODE_TEXT, json.dumps(
+        _mk_msg("login", mid, **{"from":"user001","content":"123456"})
+    ).encode(), mask=True)); await writer.drain()
+
+    buf = b""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        f, _ = parse_frame(buf)
+        if f:
+            resp = json.loads(f.payload)
+            if resp.get("code") == 200:
+                return True, round((time.time() - t0) * 1000, 1), resp
+            raise Exception(f"login code={resp.get('code')}")
+        chunk = await asyncio.wait_for(reader.read(4096), max(0.1, deadline - time.time()))
+        if not chunk: break
+        buf += chunk
+    raise Exception("login timeout")
+
+
+async def _ws_create_room(reader, writer, name="test", timeout=15):
+    mid = f"cr-{os.urandom(3).hex()}"
+    writer.write(build_frame(OPCODE_TEXT, json.dumps(
+        _mk_msg("create_room", mid, name=name)
+    ).encode(), mask=True)); await writer.drain()
+
+    buf = b""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        f, _ = parse_frame(buf)
+        if f:
+            resp = json.loads(f.payload)
+            if resp.get("code") == 200:
+                return resp["content"]["conversation_id"]
+            raise Exception(f"create_room code={resp.get('code')}")
+        chunk = await asyncio.wait_for(reader.read(4096), max(0.1, deadline - time.time()))
+        if not chunk: break
+        buf += chunk
+    raise Exception("create_room timeout")
+
+
+async def _ws_join_room(reader, writer, room_id, timeout=15):
+    mid = f"join-{os.urandom(3).hex()}"
+    writer.write(build_frame(OPCODE_TEXT, json.dumps(
+        _mk_msg("join_room", mid, conversation_id=room_id)
+    ).encode(), mask=True)); await writer.drain()
+
+    buf = b""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        f, _ = parse_frame(buf)
+        if f:
+            resp = json.loads(f.payload)
+            if resp.get("code") in (200, 400):  # 400 = already joined
+                return
+            raise Exception(f"join_room code={resp.get('code')}")
+        chunk = await asyncio.wait_for(reader.read(4096), max(0.1, deadline - time.time()))
+        if not chunk: break
+        buf += chunk
+    raise Exception("join_room timeout")
+
+
+async def _ws_close(writer):
     try:
-        # ── Connect ──
-        t0 = time.time()
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout
-        )
-        key = base64.b64encode(os.urandom(16)).decode()
-        guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-        req = f"GET / HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-        writer.write(req.encode()); await writer.drain()
+        writer.write(build_frame(OPCODE_CLOSE, b"\x03\xe8", mask=True))
+        writer.close(); await writer.wait_closed()
+    except Exception:
+        pass
 
-        data = b""
-        while b"\r\n\r\n" not in data:
-            chunk = await asyncio.wait_for(reader.read(4096), timeout)
-            if not chunk: raise Exception("no handshake")
-            data += chunk
-        if b"101" not in data:
-            raise Exception("handshake not 101")
+
+# ── 模式 1：idle - 仅保持连接 ──────────────────────────────────────
+
+async def idle_client(host, port, idx, duration, timeout=15):
+    result = {"idx": idx, "connect_ok": False, "login_ok": False,
+              "connect_ms": 0, "login_ms": 0, "error": None}
+    try:
+        t0 = time.time()
+        r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+        await _ws_handshake(r, w, host, port, timeout)
         result["connect_ok"] = True
         result["connect_ms"] = round((time.time() - t0) * 1000, 1)
 
-        # ── Helpers ──
-        def _mk_msg(mt, mid, **kw):
-            m = {"version":"1.0","msg_type":mt,"msg_id":mid,"code":200,"content":None,"err_msg":"","timestamp":int(time.time())}
-            m.update(kw); return m
+        ok, ms, _ = await _ws_login(r, w, timeout)
+        result["login_ok"] = ok
+        result["login_ms"] = ms
 
-        def _send(msg):
-            frame = build_frame(OPCODE_TEXT, json.dumps(msg, ensure_ascii=False).encode(), mask=True)
-            writer.write(frame)
-
-        async def _recv(timeout_sec=10):
-            buf = b""
-            deadline = time.time() + timeout_sec
-            while time.time() < deadline:
-                frame, n = parse_frame(buf)
-                if frame is not None:
-                    return json.loads(frame.payload)
-                chunk = await asyncio.wait_for(reader.read(4096), max(0.1, deadline - time.time()))
-                if not chunk: break
-                buf += chunk
-            raise Exception("recv timeout")
-
-        # ── Login ──（所有连接共用 user001，每个连接有独立 ConnectionContext）
-        t0 = time.time()
-        _send(_mk_msg("login", f"{user_id}-login", **{"from": "user001", "content": "123456"}))
-        resp = await _recv(timeout)
-        if resp.get("code") != 200:
-            raise Exception(f"login failed: {resp.get('code')}")
-        result["login_ok"] = True
-        result["login_ms"] = round((time.time() - t0) * 1000, 1)
-
-        # ── Join room ──
-        _send(_mk_msg("join_room", f"{user_id}-join", conversation_id=room_id))
-        await _recv(timeout)
-
-        # ── Chat + wait ACK ──
-        t0 = time.time()
-        _send(_mk_msg("room_chat", f"{user_id}-chat", conversation_id=room_id,
-                        payload={"text": f"hello from {user_id}"}, need_ack=True))
-
-        # 读到 ack 为止（忽略可能的 room_chat 广播）
-        while True:
-            resp = await _recv(timeout)
-            if resp.get("msg_type") == "ack":
-                result["ack_ok"] = True
-                result["ack_rtt_ms"] = round((time.time() - t0) * 1000, 1)
-                break
-        result["chat_ok"] = True
-        result["chat_ms"] = round((time.time() - t0) * 1000, 1)
+        # 保持连接
+        await asyncio.sleep(duration)
+        await _ws_close(w)
 
     except asyncio.TimeoutError:
         result["error"] = "timeout"
     except Exception as e:
         result["error"] = str(e)[:100]
-
-    finally:
-        try:
-            if writer:
-                cf = build_frame(OPCODE_CLOSE, b"\x03\xe8", mask=True)
-                writer.write(cf); writer.close(); await writer.wait_closed()
-        except Exception:
-            pass
-
     return result
 
 
-# ── 主函数 ────────────────────────────────────────────────────────
+# ── 模式 2：ack_isolated - 每批独立房间验证 ACK ────────────────────
 
-async def run_load_test(host: str, port: int, connections: int,
-                        batch_size: int = 50, server_pid: int = 0):
+async def ack_isolated_batch(host, port, batch_indices, batch_size, timeout=15):
+    """一批客户端：创建独立房间 → 每个人加入 → 每个人发一条 chat → 等 ACK。"""
+    clients = []
+    # 1. 一个客户端创建房间
+    first_r, first_w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+    await _ws_handshake(first_r, first_w, host, port, timeout)
+    await _ws_login(first_r, first_w, timeout)
+    rid = await _ws_create_room(first_r, first_w, f"batch-{batch_indices[0]}", timeout)
+
+    # 2. 其余客户端加入
+    readers, writers = [first_r], [first_w]
+    for idx in batch_indices[1:]:
+        r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+        await _ws_handshake(r, w, host, port, timeout)
+        await _ws_login(r, w, timeout)
+        await _ws_join_room(r, w, rid, timeout)
+        readers.append(r); writers.append(w)
+
+    # 3. 每个人发一条 chat，带 need_ack
+    msg_ids = {}
+    for i, (r, w, idx) in enumerate(zip(readers, writers, batch_indices)):
+        mid = f"ack-{idx}"
+        msg_ids[idx] = mid
+        w.write(build_frame(OPCODE_TEXT, json.dumps(
+            _mk_msg("room_chat", mid, conversation_id=rid, payload={"text":f"hello-{idx}"}, need_ack=True)
+        ).encode(), mask=True))
+    for w in writers:
+        await w.drain()
+
+    # 4. 每个人等待自己的 ACK
+    results = []
+    for i, (r, w, idx) in enumerate(zip(readers, writers, batch_indices)):
+        t0 = time.time()
+        mid = msg_ids[idx]
+        ack_ok = False
+        ack_ms = 0
+        last_msgs = []
+        try:
+            buf = b""
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                frame, _ = parse_frame(buf)
+                if frame is not None:
+                    obj = json.loads(frame.payload)
+                    last_msgs.append(obj.get("msg_type", "?"))
+                    if obj.get("msg_type") == "ack":
+                        if obj.get("content", {}).get("original_msg_id") == mid:
+                            ack_ok = True; ack_ms = round((time.time() - t0) * 1000, 1)
+                            break
+                    # 忽略不匹配的 ACK 和广播
+                    continue
+                chunk = await asyncio.wait_for(r.read(4096), max(0.1, deadline - time.time()))
+                if not chunk: break
+                buf += chunk
+        except Exception as e:
+            last_msgs.append(str(e)[:40])
+
+        results.append({
+            "idx": idx, "connect_ok": True, "login_ok": True,
+            "ack_ok": ack_ok, "ack_rtt_ms": ack_ms,
+            "error": None if ack_ok else f"no matching ack, last: {last_msgs[-5:]}",
+        })
+
+    # 5. 关闭
+    for w in writers:
+        await _ws_close(w)
+
+    return results
+
+
+# ── 模式 3：broadcast - 同房间广播（仅小规模）───────────────────────
+
+async def broadcast_client(host, port, idx, room_id, timeout=15):
+    result = {"idx": idx, "connect_ok": False, "login_ok": False,
+              "broadcast_received": False, "error": None}
+    try:
+        r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+        await _ws_handshake(r, w, host, port, timeout)
+        result["connect_ok"] = True
+        await _ws_login(r, w, timeout)
+        result["login_ok"] = True
+        await _ws_join_room(r, w, room_id, timeout)
+
+        if idx == 1:  # 第一个客户端发消息
+            w.write(build_frame(OPCODE_TEXT, json.dumps(
+                _mk_msg("room_chat", f"bc-{idx}", conversation_id=room_id,
+                        payload={"text":"broadcast-test"}, need_ack=False)
+            ).encode(), mask=True)); await w.drain()
+
+        buf = b""
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            frame, _ = parse_frame(buf)
+            if frame is not None:
+                obj = json.loads(frame.payload)
+                if obj.get("msg_type") == "room_chat" and obj.get("content", {}).get("text") == "broadcast-test":
+                    result["broadcast_received"] = True
+                    break
+            chunk = await asyncio.wait_for(r.read(4096), max(0.1, deadline - time.time()))
+            if not chunk: break
+            buf += chunk
+
+        await _ws_close(w)
+    except Exception as e:
+        result["error"] = str(e)[:100]
+    return result
+
+
+# ── 主函数 ──────────────────────────────────────────────────────────
+
+async def run_idle(host, port, connections, batch_size, duration, server_pid):
     print(f"\n{'='*60}")
-    print(f"WebSocket 压测: {host}:{port}  {connections} 连接")
+    print(f"WebSocket IDLE 模式: {host}:{port}  {connections} 连接  保持 {duration}s")
     print(f"{'='*60}\n")
 
-    # 创建固定房间供所有客户端加入
-    print("准备: 创建测试房间...")
-    cr, cw = await asyncio.open_connection(host, port)
-    key = base64.b64encode(os.urandom(16)).decode()
-    req = f"GET / HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-    cw.write(req.encode()); await cw.drain()
-    buf = b""
-    while b"\r\n\r\n" not in buf: buf += await cr.read(4096)
-    assert b"101" in buf
-
-    def _send(msg):
-        cw.write(build_frame(OPCODE_TEXT, json.dumps(msg, ensure_ascii=False).encode(), mask=True))
-    async def _recv():
-        buf2 = b""
-        while True:
-            f, _ = parse_frame(buf2)
-            if f: return json.loads(f.payload)
-            buf2 += await asyncio.wait_for(cr.read(4096), 10)
-
-    _send({"version":"1.0","msg_type":"login","msg_id":"root-login","code":200,"content":"123456","err_msg":"","timestamp":int(time.time()),"from":"user001"})
-    await _recv()
-    _send({"version":"1.0","msg_type":"create_room","msg_id":"root-room","code":200,"content":None,"err_msg":"","timestamp":int(time.time()),"name":"stress-test-room"})
-    resp = await _recv()
-    room_id = resp["content"]["conversation_id"]
-    cw.close(); await cw.wait_closed()
-    print(f"   房间创建完成: {room_id}\n")
-
-    # 测试前资源
     rss_before = get_server_stats(server_pid).get("rss_mb", 0)
     est_before = count_established(port)
     t_start = time.time()
 
-    # 分批并发
     sem = asyncio.Semaphore(batch_size)
-    tasks = []
-    idx = 0
 
-    async def one_client(user_idx: int):
-        nonlocal idx
+    async def _run_idle(idx):
         async with sem:
-            uid = f"u{user_idx:04d}"
-            return await ws_client(host, port, uid, room_id)
+            return await idle_client(host, port, idx, duration)
 
-    for user_idx in range(1, connections + 1):
-        tasks.append(asyncio.create_task(one_client(user_idx)))
+    tasks = [asyncio.create_task(_run_idle(i)) for i in range(connections)]
 
-    # 等待完成，显示进度
     results = []
-    done_count = 0
+    done = 0
     for coro in asyncio.as_completed(tasks):
-        r = await coro
-        results.append(r)
-        done_count += 1
-        if done_count % 50 == 0 or done_count == connections:
+        r = await coro; results.append(r); done += 1
+        if done % 50 == 0 or done == connections:
             elapsed = time.time() - t_start
-            print(f"  进度: {done_count}/{connections}  "
-                  f"({done_count/elapsed:.0f} 连接/秒)  "
-                  f"成功: {sum(1 for x in results if x['connect_ok'])}")
+            ok = sum(1 for x in results if x["connect_ok"])
+            print(f"  进度: {done}/{connections}  ({done/elapsed:.0f}/s)  成功: {ok}")
 
     t_end = time.time()
     rss_peak = get_server_stats(server_pid).get("rss_mb", 0)
     est_peak = count_established(port)
     cpu_peak = get_cpu_percent(server_pid)
 
-    # 统计
     ok = [r for r in results if r["connect_ok"]]
     login_ok = [r for r in ok if r["login_ok"]]
-    ack_ok = [r for r in ok if r["ack_ok"]]
     errors = [r for r in results if r["error"]]
 
     summary = {
-        "test_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "host": host, "port": port,
-        "total_connections": connections,
-        "connect_success": len(ok),
-        "connect_fail": connections - len(ok),
-        "login_success": len(login_ok),
-        "login_fail": len(ok) - len(login_ok),
-        "ack_success": len(ack_ok),
-        "ack_fail": len(ok) - len(ack_ok),
+        "mode": "idle", "test_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "host": host, "port": port, "total_connections": connections,
+        "connect_success": len(ok), "connect_fail": connections - len(ok),
+        "login_success": len(login_ok), "login_fail": len(ok) - len(login_ok),
         "avg_connect_ms": round(sum(r["connect_ms"] for r in ok) / max(len(ok), 1), 1),
         "max_connect_ms": round(max(r["connect_ms"] for r in ok) if ok else 0, 1),
-        "avg_ack_rtt_ms": round(sum(r["ack_rtt_ms"] for r in ack_ok) / max(len(ack_ok), 1), 1),
-        "max_ack_rtt_ms": round(max(r["ack_rtt_ms"] for r in ack_ok) if ack_ok else 0, 1),
-        "errors": len(errors),
-        "error_rate_pct": round(len(errors) / connections * 100, 1),
-        "server_rss_mb_before": rss_before,
-        "server_rss_mb_peak": rss_peak,
+        "errors": len(errors), "error_rate_pct": round(len(errors) / connections * 100, 1),
+        "server_rss_mb_before": rss_before, "server_rss_mb_peak": rss_peak,
         "server_cpu_pct_peak": cpu_peak,
         "established_connections_peak": est_peak,
         "established_connections_before": est_before,
-        "duration_sec": round(t_end - t_start, 1),
+        "duration_sec": round(t_end - t_start, 1), "idle_hold_sec": duration,
     }
 
-    # 保存
+    _save_and_print("ws_idle", connections, summary, rss_before, rss_peak, est_before, est_peak)
+    return summary
+
+
+async def run_ack_isolated(host, port, connections, batch_size, server_pid):
+    print(f"\n{'='*60}")
+    print(f"WebSocket ACK_ISOLATED 模式: {host}:{port}  {connections} 连接  batch={batch_size}")
+    print(f"{'='*60}\n")
+
+    t_start = time.time()
+    all_results = []
+    for batch_start in range(1, connections + 1, batch_size):
+        batch_end = min(batch_start + batch_size, connections + 1)
+        batch_indices = list(range(batch_start, batch_end))
+        batch_results = await ack_isolated_batch(
+            host, port, batch_indices, len(batch_indices))
+        all_results.extend(batch_results)
+        print(f"  batch {batch_start}-{batch_end-1}: "
+              f"ack_ok={sum(1 for r in batch_results if r['ack_ok'])}/{len(batch_results)}")
+
+    t_end = time.time()
+    ack_ok = [r for r in all_results if r["ack_ok"]]
+    errors = [r for r in all_results if r["error"]]
+
+    summary = {
+        "mode": "ack_isolated", "test_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "host": host, "port": port, "total_connections": connections,
+        "connect_success": len(all_results), "connect_fail": connections - len(all_results),
+        "login_success": sum(1 for r in all_results if r["login_ok"]),
+        "ack_success": len(ack_ok), "ack_fail": connections - len(ack_ok),
+        "avg_ack_rtt_ms": round(sum(r["ack_rtt_ms"] for r in ack_ok) / max(len(ack_ok), 1), 1),
+        "max_ack_rtt_ms": round(max(r["ack_rtt_ms"] for r in ack_ok) if ack_ok else 0, 1),
+        "errors": len(errors), "error_rate_pct": round(len(errors) / connections * 100, 1),
+        "server_rss_mb_before": 0, "server_rss_mb_peak": get_server_stats(server_pid).get("rss_mb", 0),
+        "duration_sec": round(t_end - t_start, 1), "batch_size": batch_size,
+    }
+
+    _save_and_print("ws_ack", connections, summary, 0, summary["server_rss_mb_peak"], 0, 0)
+    return summary
+
+
+async def run_broadcast(host, port, connections, server_pid):
+    print(f"\n{'='*60}")
+    print(f"WebSocket BROADCAST 模式: {host}:{port}  {connections} 连接（小规模）")
+    print(f"{'='*60}\n")
+
+    # 创建一间共享房间
+    cr, cw = await asyncio.open_connection(host, port)
+    await _ws_handshake(cr, cw, host, port)
+    await _ws_login(cr, cw)
+    room_id = await _ws_create_room(cr, cw, "broadcast-room")
+    await _ws_close(cw)
+    print(f"  房间: {room_id}\n")
+
+    tasks = [asyncio.create_task(broadcast_client(host, port, i, room_id))
+             for i in range(1, connections + 1)]
+    results = await asyncio.gather(*tasks)
+
+    ok = [r for r in results if r["connect_ok"]]
+    bc = [r for r in results if r["broadcast_received"]]
+
+    summary = {
+        "mode": "broadcast", "test_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "host": host, "port": port, "total_connections": connections,
+        "connect_success": len(ok), "broadcast_received": len(bc),
+        "error_rate_pct": round((connections - len(bc)) / connections * 100, 1),
+    }
+
+    _save_and_print("ws_broadcast", connections, summary, 0, 0, 0, 0)
+    return summary
+
+
+def _save_and_print(prefix, connections, summary, rss_before, rss_peak, est_before, est_peak):
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
     os.makedirs(out_dir, exist_ok=True)
-    out_file = os.path.join(out_dir, f"ws_{connections}_result.json")
+    out_file = os.path.join(out_dir, f"{prefix}_{connections}_result.json")
     with open(out_file, "w") as f:
         json.dump(summary, f, indent=2)
-
-    print(f"\n  结果已保存: {out_file}")
-    print(f"  连接成功: {summary['connect_success']}/{connections}  "
-          f"ACK 成功率: {summary['ack_success']}/{summary['connect_success']}  "
-          f"错误率: {summary['error_rate_pct']}%")
-    print(f"  平均连接耗时: {summary['avg_connect_ms']}ms  最大: {summary['max_connect_ms']}ms")
-    print(f"  平均 ACK RTT: {summary['avg_ack_rtt_ms']}ms  最大: {summary['max_ack_rtt_ms']}ms")
-    print(f"  服务器内存: {rss_before}MB → 峰值 {rss_peak}MB")
-    print(f"  ESTAB 连接: {est_before} → 峰值 {est_peak}\n")
-
-    if summary["error_rate_pct"] > 10:
-        print("  !! 错误率超过 10%，建议停止更高规模测试")
-
-    return summary
+    print(f"\n  结果: {out_file}")
+    for k, v in summary.items():
+        if k not in ("test_time", "host", "port", "mode"):
+            print(f"  {k}: {v}")
+    if summary.get("error_rate_pct", 0) > 10:
+        print("  !! 错误率超过 10%")
+    print()
 
 
 def main():
     parser = argparse.ArgumentParser(description="WebSocket 并发压测")
+    parser.add_argument("--mode", default="broadcast",
+                        choices=["idle", "ack_isolated", "broadcast"],
+                        help="idle=仅连接 | ack_isolated=独立房间ACK | broadcast=同房间广播")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8768)
     parser.add_argument("--connections", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=50,
-                        help="每批并发连接数")
-    parser.add_argument("--output", default="",
-                        help="输出目录（默认 results/）")
-    parser.add_argument("--server-pid", type=int, default=0,
-                        help="被测试服务进程 PID（用于资源监控）")
+    parser.add_argument("--batch-size", type=int, default=5)
+    parser.add_argument("--duration", type=int, default=30)
+    parser.add_argument("--server-pid", type=int, default=0)
     args = parser.parse_args()
 
-    asyncio.run(run_load_test(
-        args.host, args.port, args.connections,
-        batch_size=args.batch_size, server_pid=args.server_pid
-    ))
+    if args.mode == "idle":
+        asyncio.run(run_idle(args.host, args.port, args.connections,
+                             args.batch_size, args.duration, args.server_pid))
+    elif args.mode == "ack_isolated":
+        asyncio.run(run_ack_isolated(args.host, args.port, args.connections,
+                                     args.batch_size, args.server_pid))
+    else:
+        asyncio.run(run_broadcast(args.host, args.port, args.connections,
+                                  args.server_pid))
 
 
 if __name__ == "__main__":
