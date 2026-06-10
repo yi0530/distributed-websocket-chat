@@ -2,6 +2,7 @@ from backend.config import TEST_ACCOUNTS
 from backend.core.auth import decode_jwt_token, generate_jwt_token, get_token_exp_ts
 from backend.core.protocol import build_message, send_error, send_json
 from backend.utils.logger import logger
+from backend.core.offline_delivery_service import deliver_offline_messages
 from backend.core.online_presence_service import start_online_presence
 from backend.core.state import connections
 
@@ -61,3 +62,5 @@ async def handle_login(websocket, proto: dict):
             },
         ),
     )
+
+    await deliver_offline_messages(websocket)

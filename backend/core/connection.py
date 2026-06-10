@@ -24,8 +24,8 @@ from backend.handlers.private_chat import (
     handle_create_private_conversation,
     handle_private_chat,
 )
-from backend.core.offline_message_service import get_offline_messages, clear_offline_messages
-from backend.core.protocol import build_message, parse_protocol, send_error, send_json, validate_protocol
+from backend.core.offline_delivery_service import deliver_offline_messages
+from backend.core.protocol import parse_protocol, send_error, send_json, validate_protocol
 from backend.handlers.token import handle_refresh_token
 from backend.config import NODE_ID
 from backend.core.online_presence_service import start_online_presence, stop_online_presence
@@ -206,48 +206,3 @@ def handle_exit(sig, frame):
         loop.create_task(shutdown_server())
     except RuntimeError:
         logger.warning("事件循环未运行，无法异步关闭服务")
-
-async def deliver_offline_messages(websocket):
-    ctx = connections[websocket]
-    if not ctx.is_authenticated or not ctx.user_id:
-        return
-
-    messages = get_offline_messages(ctx.user_id)
-    if not messages:
-        return
-
-    for msg in messages:
-        msg_type = msg.get("msg_type")
-        conversation_id = msg.get("conversation_id")
-        from_user_id = msg.get("from_user_id")
-        payload = msg.get("payload", {})
-        text = payload.get("text", "")
-
-        if msg_type == "room_chat":
-            response = build_message(
-                "room_chat",
-                msg_id=msg.get("msg_id"),
-                code=200,
-                content={
-                    "conversation_id": conversation_id,
-                    "from_user_id": from_user_id,
-                    "text": text,
-                },
-            )
-            await send_json(websocket, response)
-
-        elif msg_type == "private_chat":
-            response = build_message(
-                "private_chat",
-                msg_id=msg.get("msg_id"),
-                code=200,
-                content={
-                    "conversation_id": conversation_id,
-                    "from_user_id": from_user_id,
-                    "to_user_id": ctx.user_id,
-                    "text": text,
-                },
-            )
-            await send_json(websocket, response)
-
-    clear_offline_messages(ctx.user_id)
