@@ -160,7 +160,8 @@ async def _ws_close(writer):
 
 # ── 模式 1：idle - 仅保持连接 ──────────────────────────────────────
 
-async def idle_client(host, port, idx, duration, timeout=15):
+async def idle_connect(host, port, idx, timeout=15):
+    """仅连接+登录，返回 (result, reader, writer)。"""
     result = {"idx": idx, "connect_ok": False, "login_ok": False,
               "connect_ms": 0, "login_ms": 0, "error": None}
     try:
@@ -169,19 +170,25 @@ async def idle_client(host, port, idx, duration, timeout=15):
         await _ws_handshake(r, w, host, port, timeout)
         result["connect_ok"] = True
         result["connect_ms"] = round((time.time() - t0) * 1000, 1)
-
         ok, ms, _ = await _ws_login(r, w, timeout)
         result["login_ok"] = ok
         result["login_ms"] = ms
-
-        # 保持连接
-        await asyncio.sleep(duration)
-        await _ws_close(w)
-
+        return result, r, w
     except asyncio.TimeoutError:
         result["error"] = "timeout"
     except Exception as e:
         result["error"] = str(e)[:100]
+    return result, None, None
+
+
+async def idle_hold_and_close(result, w, duration):
+    """保持连接 duration 秒后关闭。"""
+    if w is not None:
+        try:
+            await asyncio.sleep(duration)
+        except Exception:
+            pass
+        await _ws_close(w)
     return result
 
 
@@ -310,7 +317,9 @@ async def run_idle(host, port, connections, batch_size, duration, server_pid):
 
     async def _run_idle(idx):
         async with sem:
-            return await idle_client(host, port, idx, duration)
+            res, r, w = await idle_connect(host, port, idx)
+        # semaphore 释放后才进入 hold 阶段
+        return await idle_hold_and_close(res, w, duration)
 
     tasks = [asyncio.create_task(_run_idle(i)) for i in range(connections)]
 
