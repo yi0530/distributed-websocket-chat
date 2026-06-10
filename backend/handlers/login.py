@@ -23,6 +23,16 @@ async def handle_login(websocket, proto: dict):
         await send_error(websocket, "login 报文缺少合法密码", msg_id=msg_id)
         return
 
+    ctx = connections[websocket]
+    if ctx.is_authenticated and ctx.user_id:
+        await send_error(
+            websocket,
+            "当前连接已登录，请先断开连接后再切换账号",
+            msg_id=msg_id,
+            code=409,
+        )
+        return
+
     if TEST_ACCOUNTS.get(username) != password:
         await send_error(websocket, "账号或密码错误", msg_id=msg_id, code=401)
         return
@@ -31,7 +41,6 @@ async def handle_login(websocket, proto: dict):
     payload = decode_jwt_token(token) or {}
     expires_at = get_token_exp_ts(payload)
 
-    ctx = connections[websocket]
     ctx.user_id = username
     ctx.is_authenticated = True
     ctx.token_exp = expires_at
