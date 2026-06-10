@@ -139,6 +139,10 @@ class NativeWebSocketConnection:
         payload = text.encode("utf-8")
         await self._send_bytes(build_frame(OPCODE_TEXT, payload))
 
+    async def send(self, message: str) -> None:
+        """兼容 websockets 库接口：等价于 send_text。"""
+        await self.send_text(message)
+
     async def send_binary(self, data: bytes) -> None:
         """发送二进制帧（不 mask）。"""
         await self._send_bytes(build_frame(OPCODE_BINARY, data))
