@@ -174,6 +174,7 @@ var PrivMod = {
         try {
             var raw = sessionStorage.getItem('demo_msgs_priv_' + this.cid);
             if (raw) {
+                sessionStorage.removeItem('demo_msgs_priv_' + this.cid);
                 this._msgs = JSON.parse(raw);
                 var el = document.getElementById('pv-msgs');
                 if (el) el.innerHTML = '';

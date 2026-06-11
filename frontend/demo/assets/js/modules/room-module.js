@@ -139,6 +139,7 @@ var RoomMod = {
         try {
             var raw = sessionStorage.getItem('demo_msgs_room_' + this.room);
             if (raw) {
+                sessionStorage.removeItem('demo_msgs_room_' + this.room);
                 this._msgs = JSON.parse(raw);
                 var el = document.getElementById('rm-msgs');
                 if (el) el.innerHTML = '';
