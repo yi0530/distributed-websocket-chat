@@ -17,12 +17,8 @@ def get_online_websockets_by_user_id(user_id: str) -> list:
     for websocket, ctx in connections.items():
         if ctx.is_authenticated and ctx.user_id == user_id:
             if websocket.state != WsState.OPEN:
-                logger.info("跳过非活跃连接：user=%s state=%s close_code=%s",
-                            user_id, websocket.state, websocket.close_code)
                 continue
             if websocket.close_code is not None:
-                logger.info("跳过已关闭连接：user=%s close_code=%s",
-                            user_id, websocket.close_code)
                 continue
             result.append(websocket)
     return result
