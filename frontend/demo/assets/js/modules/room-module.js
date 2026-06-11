@@ -84,6 +84,7 @@ var RoomMod = {
             var lbl = document.getElementById('rm-label');
             if (lbl) lbl.textContent = 'Room: ' + this.room.slice(0, 12);
             this._loadMsgs();
+            for (var i3 = 0; i3 < this._msgs.length; i3++) { this._renderMsg(this._msgs[i3]); }
             U.sys(document.getElementById('rm-msgs'), '房间已创建: ' + this.room);
             if (this.cl) this.cl.listRooms();
             return;
@@ -99,6 +100,7 @@ var RoomMod = {
             var lbl = document.getElementById('rm-label');
             if (lbl) lbl.textContent = 'Room: ' + this.room.slice(0, 12);
             this._loadMsgs();
+            for (var i4 = 0; i4 < this._msgs.length; i4++) { this._renderMsg(this._msgs[i4]); }
             U.sys(document.getElementById('rm-msgs'), '已加入: ' + this.room);
             if (this.cl) this.cl.listRooms();
             return;
@@ -138,15 +140,7 @@ var RoomMod = {
         if (this._msgs.length > 0) return;
         try {
             var raw = sessionStorage.getItem('demo_msgs_room_' + this.room);
-            if (raw) {
-                sessionStorage.removeItem('demo_msgs_room_' + this.room);
-                this._msgs = JSON.parse(raw);
-                var el = document.getElementById('rm-msgs');
-                if (el) el.innerHTML = '';
-                for (var i = 0; i < this._msgs.length; i++) {
-                    this._renderMsg(this._msgs[i]);
-                }
-            }
+            if (raw) { this._msgs = JSON.parse(raw); }
         } catch(e) { this._msgs = []; }
     },
 

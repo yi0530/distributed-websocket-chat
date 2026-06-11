@@ -173,15 +173,7 @@ var PrivMod = {
         if (this._msgs.length > 0) return;
         try {
             var raw = sessionStorage.getItem('demo_msgs_priv_' + this.cid);
-            if (raw) {
-                sessionStorage.removeItem('demo_msgs_priv_' + this.cid);
-                this._msgs = JSON.parse(raw);
-                var el = document.getElementById('pv-msgs');
-                if (el) el.innerHTML = '';
-                for (var i = 0; i < this._msgs.length; i++) {
-                    this._renderMsg(this._msgs[i]);
-                }
-            }
+            if (raw) { this._msgs = JSON.parse(raw); }
         } catch(e) { this._msgs = []; }
     },
 
