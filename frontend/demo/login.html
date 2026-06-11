@@ -5,7 +5,7 @@
   <div class="login-desc">登录或注册账号以进入演示系统</div>
 
   <label for="u">用户名</label>
-  <input id="u" placeholder="user001" autofocus>
+  <input id="u" type="text" placeholder="user001" autofocus>
 
   <label for="p">密码</label>
   <input id="p" type="password" placeholder="123456">
@@ -25,8 +25,24 @@
 </div>
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
 <script>
-var cl = null, _err = document.getElementById('err');
+var cl = null,
+    _err = document.getElementById('err'),
+    _btnL = document.getElementById('btnLogin'),
+    _btnR = document.getElementById('btnRegister');
+
 document.getElementById('wsLabel').textContent = DemoConfig.WS_URL;
+
+function setStatus(text, type) {
+  _err.textContent = text;
+  if (type === 'ok') _err.style.color = '#10b981';
+  else if (type === 'error') _err.style.color = '#ef4444';
+  else _err.style.color = '#a0a0a8'; // info
+}
+
+function setBusy(busy) {
+  _btnL.disabled = busy;
+  _btnR.disabled = busy;
+}
 
 function initCl() {
   if (cl) cl.close();
@@ -38,12 +54,12 @@ function initCl() {
 
 function onMsg(m) {
   if (m.msg_type === 'register' && m.code === 200) {
-    _err.textContent = '注册成功：' + ((m.content && m.content.username) || '');
-    _err.style.color = '#10b981';
+    setStatus('注册成功，可以登录', 'ok');
+    setBusy(false);
   }
   if (m.msg_type === 'error') {
-    _err.textContent = (m.code || '') + ' ' + (m.err_msg || '');
-    _err.style.color = '#ef4444';
+    setStatus((m.code || '') + ' ' + (m.err_msg || ''), 'error');
+    setBusy(false);
   }
 }
 
@@ -63,16 +79,48 @@ function ensure() {
 function doRegister() {
   var u = document.getElementById('u').value.trim();
   var p = document.getElementById('p').value;
-  _err.textContent = '';
-  ensure().then(function() { cl.register(u, p); });
+  if (!u || !p) { setStatus('请输入用户名和密码', 'error'); return; }
+
+  setStatus('正在连接服务器...', 'info');
+  setBusy(true);
+
+  ensure()
+    .then(function() {
+      setStatus('正在注册...', 'info');
+      cl.register(u, p);
+    })
+    .catch(function() {
+      setStatus('无法连接 WebSocket 服务，请检查 WS 地址或后端是否启动', 'error');
+      setBusy(false);
+    });
 }
 
 function doLogin() {
   var u = document.getElementById('u').value.trim();
   var p = document.getElementById('p').value;
-  _err.textContent = '';
-  ensure().then(function() { cl.login(u, p); });
+  if (!u || !p) { setStatus('请输入用户名和密码', 'error'); return; }
+
+  setStatus('正在连接服务器...', 'info');
+  setBusy(true);
+
+  ensure()
+    .then(function() {
+      setStatus('正在登录...', 'info');
+      cl.login(u, p);
+    })
+    .catch(function() {
+      setStatus('无法连接 WebSocket 服务，请检查 WS 地址或后端是否启动', 'error');
+      setBusy(false);
+    });
 }
+
+// Enter key support
+document.getElementById('u').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('p').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
 
 initCl();
 </script></body></html>
