@@ -11,6 +11,6 @@
 </div></div>
 <script>
 document.getElementById('wsUrl').value = new URLSearchParams(location.search).get('ws') || 'ws://127.0.0.1:8768';
-function updateWs() { alert('Reload pages to use: ' + document.getElementById('wsUrl').value); }
+function updateWs() { var v = document.getElementById('wsUrl').value; DemoConfig.setWsUrl(v); alert('WS URL: ' + v + ' (click any card to open demo)'); }
 function go(url) { var w = document.getElementById('wsUrl').value; window.open(url + '?ws=' + encodeURIComponent(w), '_blank'); }
 </script></body></html>

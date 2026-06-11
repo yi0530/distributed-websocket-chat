@@ -23,7 +23,8 @@ var PrivateChatPage = {
             var mt = m.msg_type;
             if (mt === 'private_conversation_created' && m.code === 200) {
                 self.cid = m.content.conversation_id;
-                self.target = m.content.participants.find(function(x) { return x !== State.user(); });
+                var parts = (m.content && m.content.participants) || [];
+                self.target = parts.find(function(x) { return x !== State.user(); }) || document.getElementById('tu').value.trim();
                 State.privConv(self.cid); State.target(self.target);
                 document.getElementById('tg').textContent = 'Target: ' + self.target;
                 U.sys(self._c, 'Private chat: ' + self.target);
