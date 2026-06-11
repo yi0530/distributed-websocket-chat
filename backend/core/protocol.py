@@ -119,6 +119,13 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
     elif msg_type == "refresh_token":
         pass
 
+    # ====================== 列出群聊 / 会话列表 ======================
+    elif msg_type == "list_rooms":
+        pass
+
+    elif msg_type == "list_my_conversations":
+        pass
+
     # ====================== 创建群聊会话 ======================
     elif msg_type == "create_room":
         name = proto.get("name")

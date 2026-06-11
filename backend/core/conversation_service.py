@@ -3,6 +3,7 @@ import uuid
 from backend.core.conversation_store import (
     delete_private_index,
     get_private_index,
+    list_all_conversation_ids,
     load_conversation,
     save_conversation,
     set_private_index,
@@ -137,6 +138,49 @@ def get_other_private_participant(conversation_id: str, current_user_id: str) ->
             return user_id
 
     raise ValueError("未找到私聊对方用户")
+
+
+def list_group_conversations() -> list[dict]:
+    """返回所有群聊会话摘要：conversation_id, name, participant_count, owner"""
+    result = []
+    for cid in list_all_conversation_ids():
+        conv = load_conversation(cid)
+        if conv is None or conv.get("type") != "group":
+            continue
+        result.append({
+            "conversation_id": conv["conversation_id"],
+            "name": conv.get("name", ""),
+            "participant_count": len(conv.get("participants", set())),
+            "owner": conv.get("owner", ""),
+        })
+    return result
+
+
+def list_user_conversations(user_id: str) -> list[dict]:
+    """返回用户参与的所有会话摘要"""
+    result = []
+    for cid in list_all_conversation_ids():
+        conv = load_conversation(cid)
+        if conv is None:
+            continue
+        participants = conv.get("participants", set())
+        if user_id not in participants:
+            continue
+        item = {
+            "conversation_id": conv["conversation_id"],
+            "type": conv.get("type", ""),
+            "name": conv.get("name", ""),
+            "participant_count": len(participants),
+        }
+        if conv.get("type") == "private":
+            peer = None
+            for p in participants:
+                if p != user_id:
+                    peer = p
+                    break
+            item["peer"] = peer or ""
+        result.append(item)
+    return result
 
 
 def seed_test_conversations_once() -> None:

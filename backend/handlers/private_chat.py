@@ -5,6 +5,7 @@ from backend.core.conversation_service import (
     create_or_get_private_conversation,
     get_conversation,
     get_other_private_participant,
+    list_user_conversations,
 )
 from backend.core.dedupe_service import has_processed_message, mark_message_processed
 from backend.core.local_delivery_service import deliver_private_message_locally
@@ -142,3 +143,29 @@ async def handle_private_chat(websocket, proto: dict):
 
     if need_ack:
         await send_ack(websocket, msg_id, status="processed")
+
+
+async def handle_list_my_conversations(websocket, proto: dict):
+    msg_id = proto.get("msg_id")
+    ctx = connections[websocket]
+
+    if not ctx.is_authenticated or not ctx.user_id:
+        await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
+        return
+
+    try:
+        convs = await asyncio.to_thread(list_user_conversations, ctx.user_id)
+    except Exception:
+        logger.exception("列出用户会话失败：user=%s", ctx.user_id)
+        await send_error(websocket, "获取会话列表失败，请重试", msg_id=msg_id, code=500)
+        return
+
+    await send_json(
+        websocket,
+        build_message(
+            "my_conversations",
+            msg_id=msg_id,
+            code=200,
+            content={"conversations": convs},
+        ),
+    )

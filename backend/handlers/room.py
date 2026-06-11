@@ -7,6 +7,7 @@ from backend.core.conversation_service import (
     get_conversation_participants,
     join_group_conversation,
     leave_group_conversation,
+    list_group_conversations,
 )
 from backend.core.dedupe_service import has_processed_message, mark_message_processed
 from backend.core.local_delivery_service import deliver_room_message_locally
@@ -224,3 +225,29 @@ async def handle_room_chat(websocket, proto: dict):
 
     if need_ack:
         await send_ack(websocket, msg_id, status="processed")
+
+
+async def handle_list_rooms(websocket, proto: dict):
+    msg_id = proto.get("msg_id")
+    ctx = connections[websocket]
+
+    if not ctx.is_authenticated or not ctx.user_id:
+        await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
+        return
+
+    try:
+        rooms = await asyncio.to_thread(list_group_conversations)
+    except Exception:
+        logger.exception("列出群聊失败")
+        await send_error(websocket, "获取群聊列表失败，请重试", msg_id=msg_id, code=500)
+        return
+
+    await send_json(
+        websocket,
+        build_message(
+            "room_list",
+            msg_id=msg_id,
+            code=200,
+            content={"rooms": rooms},
+        ),
+    )

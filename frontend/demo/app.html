@@ -115,13 +115,13 @@ var AppPage = {
             }
 
             // Room messages — always route to RoomMod
-            if (mt === 'room_created' || mt === 'room_joined' || mt === 'room_chat' || mt === 'room_members' || mt === 'leave_room') {
+            if (mt === 'room_created' || mt === 'room_joined' || mt === 'room_chat' || mt === 'room_members' || mt === 'leave_room' || mt === 'room_list') {
                 if (RoomMod.handleMsg) RoomMod.handleMsg(m);
                 return;
             }
 
             // Private messages — always route to PrivMod
-            if (mt === 'private_conversation_created' || mt === 'private_chat') {
+            if (mt === 'private_conversation_created' || mt === 'private_chat' || mt === 'my_conversations') {
                 if (PrivMod.handleMsg) PrivMod.handleMsg(m);
                 return;
             }

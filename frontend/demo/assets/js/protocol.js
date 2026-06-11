@@ -27,4 +27,10 @@ const Proto = {
     privateChat: function(cid, text, ack) {
         return this.base('private_chat', this.genMsgId('priv'), { conversation_id: cid, payload: { text: text }, need_ack: ack !== false });
     },
+    listRooms: function() {
+        return this.base('list_rooms', this.genMsgId('lr'));
+    },
+    listMyConversations: function() {
+        return this.base('list_my_conversations', this.genMsgId('lmc'));
+    },
 };

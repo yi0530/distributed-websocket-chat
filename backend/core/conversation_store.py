@@ -80,6 +80,19 @@ def get_private_index(user_a: str, user_b: str) -> str | None:
     return None
 
 
+def list_all_conversation_ids() -> list[str]:
+    """扫描 Redis 中所有会话 key，返回 conversation_id 列表。"""
+    pattern = f"{REDIS_KEY_PREFIX}:conversation:*"
+    keys = redis_client.keys(pattern)
+    prefix = f"{REDIS_KEY_PREFIX}:conversation:"
+    result = []
+    for key in keys:
+        cid = key[len(prefix):] if key.startswith(prefix) else key
+        if cid:
+            result.append(cid)
+    return result
+
+
 def delete_private_index(user_a: str, user_b: str) -> None:
     if not all(isinstance(v, str) and v.strip() for v in [user_a, user_b]):
         raise ValueError("私聊索引参数不合法")

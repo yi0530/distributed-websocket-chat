@@ -127,4 +127,6 @@ WsClient.prototype.sendPrivMsg = function(cid, text, ack) {
     if (ack !== false) this._ack[msg.msg_id] = { time: Date.now(), status: 'pending' };
     return this._send(msg);
 };
+WsClient.prototype.listRooms = function() { return this._send(Proto.listRooms()); };
+WsClient.prototype.listMyConversations = function() { return this._send(Proto.listMyConversations()); };
 WsClient.prototype.pending = function() { return this._ack; };
