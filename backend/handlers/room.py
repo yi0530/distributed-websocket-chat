@@ -61,9 +61,13 @@ async def handle_join_room(websocket, proto: dict):
         return
 
     try:
-        conversation = join_group_conversation(conversation_id, ctx.user_id)
+        conversation = await asyncio.to_thread(join_group_conversation, conversation_id, ctx.user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("加入群聊异常：cid=%s user=%s", conversation_id, ctx.user_id)
+        await send_error(websocket, "加入群聊失败，请重试", msg_id=msg_id, code=500)
         return
 
     await send_json(
@@ -91,9 +95,13 @@ async def handle_leave_room(websocket, proto: dict):
         return
 
     try:
-        conversation = leave_group_conversation(conversation_id, ctx.user_id)
+        conversation = await asyncio.to_thread(leave_group_conversation, conversation_id, ctx.user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("离开群聊异常：cid=%s user=%s", conversation_id, ctx.user_id)
+        await send_error(websocket, "操作失败，请重试", msg_id=msg_id, code=500)
         return
 
     await send_json(
@@ -116,10 +124,14 @@ async def handle_get_room_members(websocket, proto: dict):
     conversation_id = proto.get("conversation_id")
 
     try:
-        members = get_conversation_participants(conversation_id)
-        conversation = get_conversation(conversation_id)
+        members = await asyncio.to_thread(get_conversation_participants, conversation_id)
+        conversation = await asyncio.to_thread(get_conversation, conversation_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("获取群成员异常：cid=%s", conversation_id)
+        await send_error(websocket, "获取群成员失败，请重试", msg_id=msg_id, code=500)
         return
 
     await send_json(
@@ -164,9 +176,13 @@ async def handle_room_chat(websocket, proto: dict):
         return
 
     try:
-        conversation = get_conversation(conversation_id)
+        conversation = await asyncio.to_thread(get_conversation, conversation_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("获取会话异常：cid=%s", conversation_id)
+        await send_error(websocket, "发送失败，请重试", msg_id=msg_id, code=500)
         return
 
     if conversation["type"] != "group":

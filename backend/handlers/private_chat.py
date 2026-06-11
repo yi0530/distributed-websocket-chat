@@ -82,9 +82,13 @@ async def handle_private_chat(websocket, proto: dict):
         return
 
     try:
-        conversation = get_conversation(conversation_id)
+        conversation = await asyncio.to_thread(get_conversation, conversation_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("获取私聊会话异常：cid=%s", conversation_id)
+        await send_error(websocket, "发送失败，请重试", msg_id=msg_id, code=500)
         return
 
     if conversation["type"] != "private":
@@ -96,9 +100,13 @@ async def handle_private_chat(websocket, proto: dict):
         return
 
     try:
-        target_user_id = get_other_private_participant(conversation_id, ctx.user_id)
+        target_user_id = await asyncio.to_thread(get_other_private_participant, conversation_id, ctx.user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("获取私聊对方异常：cid=%s user=%s", conversation_id, ctx.user_id)
+        await send_error(websocket, "发送失败，请重试", msg_id=msg_id, code=500)
         return
 
     await deliver_private_message_locally(
