@@ -142,6 +142,8 @@ var PrivMod = {
             return;
         }
         if (mt === 'chat_history' && m.code === 200) {
+            var histCidP = m.content && m.content.conversation_id;
+            if (this.cid && histCidP && histCidP !== this.cid) return;
             var histMsgsP = (m.content && m.content.messages) || [];
             this._msgs = [];
             var histElP = document.getElementById('pv-msgs');
@@ -152,6 +154,7 @@ var PrivMod = {
                 this._msgs.push(entryP);
                 this._renderMsg(entryP);
             }
+            this._saveMsgs(histCidP);
             return;
         }
         if (mt === 'private_chat') {

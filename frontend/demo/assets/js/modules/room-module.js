@@ -109,6 +109,9 @@ var RoomMod = {
             return;
         }
         if (mt === 'chat_history' && m.code === 200) {
+            var histCid = m.content && m.content.conversation_id;
+            // Ignore if this history is for a different room than the one we're viewing
+            if (this.room && histCid && histCid !== this.room) return;
             var histMsgs = (m.content && m.content.messages) || [];
             this._msgs = [];
             var histEl = document.getElementById('rm-msgs');
@@ -119,6 +122,7 @@ var RoomMod = {
                 this._msgs.push(entry);
                 this._renderMsg(entry);
             }
+            this._saveMsgs(histCid);
             return;
         }
         if (mt === 'room_chat') {
