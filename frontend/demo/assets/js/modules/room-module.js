@@ -1,6 +1,6 @@
 // Room chat module — messages cached, room-ID-isolated, room list
 var RoomMod = {
-    cl: null, room: null, _msgs: [], _rooms: [], _typingUsers: {}, _typingTimer: null,
+    cl: null, room: null, _msgs: [], _rooms: [],
 
     render: function(area, client) {
         this.cl = client;
@@ -15,8 +15,7 @@ var RoomMod = {
             '<span class="room-id" id="rm-label">' + (this.room ? 'Room: ' + this.room.slice(0, 12) : '') + '</span>' +
             '</div>' +
             '<div class="chat-msgs" id="rm-msgs"></div>' +
-            '<div id="rm-typing" style="height:20px;padding:0 16px;font-size:12px;color:#6b7280;font-style:italic"></div>' +
-            '<div class="chat-input"><input id="rm-input" placeholder="输入消息..." onkeydown="if(event.key===\'Enter\')RoomMod.send()" oninput="RoomMod._onTyping()"><button id="rm-btn-send" onclick="RoomMod.send()">发送</button></div>';
+            '<div class="chat-input"><input id="rm-input" placeholder="输入消息..." onkeydown="if(event.key===\'Enter\')RoomMod.send()"><button id="rm-btn-send" onclick="RoomMod.send()">发送</button></div>';
 
         this._loadMsgs();
 
@@ -124,7 +123,6 @@ var RoomMod = {
                 this._renderMsg(entry);
             }
             this._saveMsgs(histCid);
-            setTimeout(function(self) { self._sendReadReceipt(); }, 200, this);
             return;
         }
         if (mt === 'room_chat') {
@@ -133,26 +131,6 @@ var RoomMod = {
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
             this._saveMsgs(msgCid);
-            this._sendReadReceipt();
-            return;
-        }
-        if (mt === 'user_typing') {
-            var tuid = m.content && m.content.user_id;
-            var tcid = m.content && m.content.conversation_id;
-            if (!tuid || (this.room && tcid && tcid !== this.room)) return;
-            if (m.content.typing) {
-                this._typingUsers[tuid] = Date.now();
-            } else {
-                delete this._typingUsers[tuid];
-            }
-            this._showTyping();
-            return;
-        }
-        if (mt === 'read_receipt') {
-            var rruid = m.content && m.content.user_id;
-            var rrcid = m.content && m.content.conversation_id;
-            if (!rruid || (this.room && rrcid && rrcid !== this.room)) return;
-            this._pushSys(rruid + ' 已读');
             return;
         }
         if (mt === 'error') {
@@ -193,37 +171,6 @@ var RoomMod = {
             var own = (entry.m.content && entry.m.content.from_user_id) === State.user();
             U.msg(document.getElementById('rm-msgs'), entry.m.content, own);
         }
-    },
-
-    _onTyping: function() {
-        if (!this.room || !this.cl) return;
-        this.cl.sendTypingStart(this.room);
-        clearTimeout(this._typingTimer);
-        this._typingTimer = setTimeout(function(self) {
-            if (self.room && self.cl) self.cl.sendTypingStop(self.room);
-        }, 2000, this);
-    },
-
-    _showTyping: function() {
-        var el = document.getElementById('rm-typing');
-        if (!el) return;
-        var now = Date.now();
-        var names = [];
-        for (var uid in this._typingUsers) {
-            if (now - this._typingUsers[uid] < 5000) {
-                names.push(uid);
-            } else {
-                delete this._typingUsers[uid];
-            }
-        }
-        el.textContent = names.length > 0 ? names.join(', ') + ' 正在输入...' : '';
-    },
-
-    _sendReadReceipt: function() {
-        if (!this.room || !this.cl || this._msgs.length === 0) return;
-        var last = this._msgs[this._msgs.length - 1];
-        var lastMid = (last.m && last.m.msg_id) || '';
-        if (lastMid) this.cl.sendReadReceipt(this.room, lastMid);
     },
 
     create: function() {

@@ -123,13 +123,6 @@ var AppPage = {
                 return;
             }
 
-            // Shared messages — route based on content conversation_id
-            if (mt === 'read_receipt' || mt === 'user_typing') {
-                if (RoomMod.handleMsg) RoomMod.handleMsg(m);
-                if (PrivMod.handleMsg) PrivMod.handleMsg(m);
-                return;
-            }
-
             // Room messages — always route to RoomMod
             if (mt === 'room_created' || mt === 'room_joined' || mt === 'room_chat' || mt === 'room_members' || mt === 'leave_room' || mt === 'room_list') {
                 if (RoomMod.handleMsg) RoomMod.handleMsg(m);
@@ -138,7 +131,7 @@ var AppPage = {
             }
 
             // Private messages — always route to PrivMod
-            if (mt === 'private_conversation_created' || mt === 'private_chat' || mt === 'my_conversations') {
+            if (mt === 'private_conversation_created' || mt === 'private_chat' || mt === 'my_conversations' || mt === 'read_receipt' || mt === 'user_typing') {
                 if (PrivMod.handleMsg) PrivMod.handleMsg(m);
                 if (mt === 'my_conversations') self.renderSidebar();
                 return;
