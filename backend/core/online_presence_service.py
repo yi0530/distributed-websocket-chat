@@ -21,7 +21,11 @@ async def _online_status_renew_task(websocket):
         if not ctx.is_authenticated or not ctx.user_id:
             break
 
-        ok = refresh_user_online(ctx.user_id, NODE_ID)
+        try:
+            ok = await asyncio.to_thread(refresh_user_online, ctx.user_id, NODE_ID)
+        except Exception:
+            logger.exception("在线状态续命异常：user=%s node=%s", ctx.user_id, NODE_ID)
+            break
         if not ok:
             logger.warning("在线状态续命失败：user=%s node=%s", ctx.user_id, NODE_ID)
             break
@@ -57,6 +61,6 @@ async def stop_online_presence(websocket) -> None:
 
     if ctx.user_id:
         try:
-            clear_user_online(ctx.user_id, NODE_ID)
+            await asyncio.to_thread(clear_user_online, ctx.user_id, NODE_ID)
         except Exception:
             logger.exception("清理在线状态失败：user=%s node=%s", ctx.user_id, NODE_ID)

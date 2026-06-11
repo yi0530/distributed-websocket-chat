@@ -1,6 +1,9 @@
+import asyncio
+
 from backend.core.state import connections
 from backend.core.offline_message_service import get_offline_messages, clear_offline_messages
 from backend.core.protocol import build_message, send_json
+from backend.utils.logger import logger
 
 
 async def deliver_offline_messages(websocket):
@@ -8,7 +11,12 @@ async def deliver_offline_messages(websocket):
     if not ctx.is_authenticated or not ctx.user_id:
         return
 
-    messages = get_offline_messages(ctx.user_id)
+    try:
+        messages = await asyncio.to_thread(get_offline_messages, ctx.user_id)
+    except Exception:
+        logger.exception("获取离线消息失败，跳过离线补发：user=%s", ctx.user_id)
+        return
+
     if not messages:
         return
 
@@ -46,4 +54,7 @@ async def deliver_offline_messages(websocket):
             )
             await send_json(websocket, response)
 
-    clear_offline_messages(ctx.user_id)
+    try:
+        await asyncio.to_thread(clear_offline_messages, ctx.user_id)
+    except Exception:
+        logger.exception("清理离线消息失败：user=%s", ctx.user_id)

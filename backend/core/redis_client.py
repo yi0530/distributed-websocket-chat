@@ -7,4 +7,9 @@ redis_client = redis.Redis(
     port=REDIS_PORT,
     db=REDIS_DB,
     decode_responses=True,
+    socket_connect_timeout=1,
+    socket_timeout=1,
+    socket_keepalive=True,
+    health_check_interval=10,
+    retry_on_timeout=False,
 )

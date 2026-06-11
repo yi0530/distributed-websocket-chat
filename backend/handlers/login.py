@@ -1,3 +1,5 @@
+import asyncio
+
 from backend.core.auth import decode_jwt_token, generate_jwt_token, get_token_exp_ts
 from backend.core.protocol import build_message, send_error, send_json
 from backend.core.user_store import verify_user
@@ -47,9 +49,9 @@ async def handle_login(websocket, proto: dict):
     ctx.token_exp = expires_at
 
     try:
-        start_online_presence(websocket)
+        await asyncio.to_thread(start_online_presence, websocket)
     except Exception:
-        logger.exception("启动在线状态失败（Redis 不可用？）：user=%s", username)
+        logger.exception("启动在线状态失败，跳过在线状态登记：user=%s", username)
 
     logger.info("登录成功：user=%s", username)
 

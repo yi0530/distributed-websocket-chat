@@ -1,3 +1,6 @@
+# NOTE: Functions in this module use synchronous Redis calls.
+# They MUST be called via asyncio.to_thread() from async code paths
+# to avoid blocking the event loop.
 import json
 
 from backend.config import REDIS_KEY_PREFIX, REDIS_OFFLINE_TTL_SECONDS
