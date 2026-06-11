@@ -11,10 +11,6 @@
   <div class="nav-item" data-mod="private" onclick="AppPage.switchMod('private')">
     <span>@</span> 私聊
   </div>
-  <div class="nav-item" data-mod="stress" onclick="AppPage.switchMod('stress')">
-    <span>&#9776;</span> 压测结果
-  </div>
-
   <div class="nav-spacer"></div>
 
   <div class="nav-bottom">
@@ -51,7 +47,6 @@
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
 <script src="assets/js/modules/room-module.js"></script>
 <script src="assets/js/modules/private-module.js"></script>
-<script src="assets/js/modules/stress-module.js"></script>
 <script>
 var _authTimer = null;
 
@@ -188,7 +183,6 @@ var AppPage = {
         area.innerHTML = '';
         if (this.mod === 'room') RoomMod.render(area, this.cl);
         else if (this.mod === 'private') PrivMod.render(area, this.cl);
-        else if (this.mod === 'stress') StressMod.render(area);
     },
 
     switchMod: function(m) {

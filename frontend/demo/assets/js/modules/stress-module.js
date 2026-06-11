@@ -1,4 +1,6 @@
-// Stress test dashboard module
+// Legacy dev module — 1000-concurrency stress test dashboard.
+// NOT loaded by app.html in the current main flow.
+// Kept for standalone development reference; see tools/load_test/ for actual CLI data.
 var StressMod = {
     render: function(area) {
         area.innerHTML =
