@@ -33,4 +33,7 @@ const Proto = {
     listMyConversations: function() {
         return this.base('list_my_conversations', this.genMsgId('lmc'));
     },
+    getChatHistory: function(cid) {
+        return this.base('get_chat_history', this.genMsgId('hist'), { conversation_id: cid });
+    },
 };

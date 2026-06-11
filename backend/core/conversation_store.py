@@ -81,15 +81,20 @@ def get_private_index(user_a: str, user_b: str) -> str | None:
 
 
 def list_all_conversation_ids() -> list[str]:
-    """扫描 Redis 中所有会话 key，返回 conversation_id 列表。"""
+    """扫描 Redis 中所有会话 key（SCAN，不阻塞），返回 conversation_id 列表。"""
     pattern = f"{REDIS_KEY_PREFIX}:conversation:*"
-    keys = redis_client.keys(pattern)
     prefix = f"{REDIS_KEY_PREFIX}:conversation:"
     result = []
-    for key in keys:
-        cid = key[len(prefix):] if key.startswith(prefix) else key
-        if cid:
-            result.append(cid)
+    cursor = 0
+    while True:
+        cursor, keys = redis_client.scan(cursor, match=pattern, count=100)
+        for k in keys:
+            if k.startswith(prefix):
+                cid = k[len(prefix):]
+                if cid:
+                    result.append(cid)
+        if cursor == 0:
+            break
     return result
 
 

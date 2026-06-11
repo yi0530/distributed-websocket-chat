@@ -86,7 +86,7 @@ var RoomMod = {
             this._loadMsgs();
             for (var i3 = 0; i3 < this._msgs.length; i3++) { this._renderMsg(this._msgs[i3]); }
             U.sys(document.getElementById('rm-msgs'), '房间已创建: ' + this.room);
-            if (this.cl) this.cl.listRooms();
+            if (this.cl) { this.cl.listRooms(); this.cl.getChatHistory(this.room); }
             return;
         }
         if (mt === 'room_joined' && m.code === 200) {
@@ -102,7 +102,20 @@ var RoomMod = {
             this._loadMsgs();
             for (var i4 = 0; i4 < this._msgs.length; i4++) { this._renderMsg(this._msgs[i4]); }
             U.sys(document.getElementById('rm-msgs'), '已加入: ' + this.room);
-            if (this.cl) this.cl.listRooms();
+            if (this.cl) { this.cl.listRooms(); this.cl.getChatHistory(this.room); }
+            return;
+        }
+        if (mt === 'chat_history' && m.code === 200) {
+            var histMsgs = (m.content && m.content.messages) || [];
+            this._msgs = [];
+            var histEl = document.getElementById('rm-msgs');
+            if (histEl) histEl.innerHTML = '';
+            for (var hi = 0; hi < histMsgs.length; hi++) {
+                var hm = histMsgs[hi];
+                var entry = { type: 'chat', m: { msg_type: hm.msg_type, content: { conversation_id: hm.conversation_id, from_user_id: hm.from_user_id, text: hm.text } } };
+                this._msgs.push(entry);
+                this._renderMsg(entry);
+            }
             return;
         }
         if (mt === 'room_chat') {

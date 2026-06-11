@@ -46,11 +46,19 @@ def get_user_online_node(user_id: str) -> str | None:
 
 
 def list_all_online_users() -> list[str]:
-    """扫描 Redis 中所有在线用户 key，返回 user_id 列表。"""
+    """扫描 Redis 中所有在线用户 key（SCAN，不阻塞），返回 user_id 列表。"""
     pattern = f"{REDIS_KEY_PREFIX}:online:user:*"
-    keys = redis_client.keys(pattern)
     prefix = f"{REDIS_KEY_PREFIX}:online:user:"
-    return [k[len(prefix):] for k in keys if k.startswith(prefix)]
+    result = []
+    cursor = 0
+    while True:
+        cursor, keys = redis_client.scan(cursor, match=pattern, count=100)
+        for k in keys:
+            if k.startswith(prefix):
+                result.append(k[len(prefix):])
+        if cursor == 0:
+            break
+    return result
 
 
 def clear_user_online(user_id: str, owner_node_id: str | None = None) -> None:

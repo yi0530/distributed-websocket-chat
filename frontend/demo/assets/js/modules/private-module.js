@@ -100,6 +100,7 @@ var PrivMod = {
             this._renderMsg(this._msgs[i]);
         }
         this._pushSys('已进入与 ' + peer + ' 的私聊');
+        if (this.cl) this.cl.getChatHistory(cid);
         if (AppPage && AppPage.renderSidebar) AppPage.renderSidebar();
     },
 
@@ -134,7 +135,20 @@ var PrivMod = {
             var elL = document.getElementById('pv-label');
             if (elL && this.target) elL.textContent = '与 ' + this.target + ' 聊天中';
             this._pushSys('已建立与 ' + this.target + ' 的私聊');
-            if (this.cl) this.cl.listMyConversations();
+            if (this.cl) { this.cl.listMyConversations(); this.cl.getChatHistory(this.cid); }
+            return;
+        }
+        if (mt === 'chat_history' && m.code === 200) {
+            var histMsgsP = (m.content && m.content.messages) || [];
+            this._msgs = [];
+            var histElP = document.getElementById('pv-msgs');
+            if (histElP) histElP.innerHTML = '';
+            for (var hp = 0; hp < histMsgsP.length; hp++) {
+                var hmp = histMsgsP[hp];
+                var entryP = { type: 'chat', m: { msg_type: hmp.msg_type, content: { conversation_id: hmp.conversation_id, from_user_id: hmp.from_user_id, text: hmp.text } } };
+                this._msgs.push(entryP);
+                this._renderMsg(entryP);
+            }
             return;
         }
         if (mt === 'private_chat') {

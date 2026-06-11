@@ -129,4 +129,5 @@ WsClient.prototype.sendPrivMsg = function(cid, text, ack) {
 };
 WsClient.prototype.listRooms = function() { return this._send(Proto.listRooms()); };
 WsClient.prototype.listMyConversations = function() { return this._send(Proto.listMyConversations()); };
+WsClient.prototype.getChatHistory = function(cid) { return this._send(Proto.getChatHistory(cid)); };
 WsClient.prototype.pending = function() { return this._ack; };

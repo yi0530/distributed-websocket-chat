@@ -9,6 +9,7 @@ from backend.core.conversation_service import (
     leave_group_conversation,
     list_group_conversations,
 )
+from backend.core.message_store import get_recent_messages
 from backend.core.dedupe_service import has_processed_message, mark_message_processed
 from backend.core.local_delivery_service import deliver_room_message_locally
 from backend.core.message_store import save_message
@@ -265,5 +266,49 @@ async def handle_list_rooms(websocket, proto: dict):
             msg_id=msg_id,
             code=200,
             content={"rooms": rooms},
+        ),
+    )
+
+
+async def handle_get_chat_history(websocket, proto: dict):
+    msg_id = proto.get("msg_id")
+    conversation_id = proto.get("conversation_id")
+    ctx = connections[websocket]
+
+    if not ctx.is_authenticated or not ctx.user_id:
+        await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
+        return
+
+    try:
+        conversation = await asyncio.to_thread(get_conversation, conversation_id)
+    except ValueError as e:
+        await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("获取会话异常：cid=%s", conversation_id)
+        await send_error(websocket, "获取历史失败，请重试", msg_id=msg_id, code=500)
+        return
+
+    if ctx.user_id not in conversation.get("participants", set()):
+        await send_error(websocket, "你不在该会话中", msg_id=msg_id, code=403)
+        return
+
+    try:
+        messages = await asyncio.to_thread(get_recent_messages, conversation_id, 50)
+    except Exception:
+        logger.exception("获取历史消息失败：cid=%s", conversation_id)
+        await send_error(websocket, "获取历史失败，请重试", msg_id=msg_id, code=500)
+        return
+
+    await send_json(
+        websocket,
+        build_message(
+            "chat_history",
+            msg_id=msg_id,
+            code=200,
+            content={
+                "conversation_id": conversation_id,
+                "messages": list(reversed(messages)),
+            },
         ),
     )
