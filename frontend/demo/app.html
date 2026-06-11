@@ -11,9 +11,6 @@
   <div class="nav-item" data-mod="private" onclick="AppPage.switchMod('private')">
     <span>@</span> 私聊
   </div>
-  <div class="nav-item" data-mod="offline" onclick="AppPage.switchMod('offline')">
-    <span>&#8635;</span> 离线消息
-  </div>
   <div class="nav-item" data-mod="stress" onclick="AppPage.switchMod('stress')">
     <span>&#9776;</span> 压测结果
   </div>
@@ -37,7 +34,7 @@
       <button class="danger" onclick="doLogout()">退出登录</button>
     </span>
   </div>
-  <div id="modArea"></div>
+  <div id="modArea" style="position:relative"></div>
 </div>
 
 <!-- Right Protocol Panel -->
@@ -54,24 +51,25 @@
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
 <script src="assets/js/modules/room-module.js"></script>
 <script src="assets/js/modules/private-module.js"></script>
-<script src="assets/js/modules/offline-module.js"></script>
 <script src="assets/js/modules/stress-module.js"></script>
 <script>
 var _authTimer = null;
 
 function setConnStatus(text, cls) {
   var el = document.getElementById('topConn');
+  if (!el) return;
   el.textContent = text;
   el.className = 'top-conn ' + (cls || 'muted');
 }
 function setAuthStatus(text, cls) {
   var el = document.getElementById('topAuth');
+  if (!el) return;
   el.textContent = text;
   el.className = 'top-auth ' + (cls || 'muted');
 }
 
 var AppPage = {
-    cl: null, mod: 'room', _p: null, _panel: null,
+    cl: null, mod: 'room', _p: null, _panel: null, appReady: false,
 
     init: function() {
         if (!State.loggedIn()) { window.location.href = 'login.html'; return; }
@@ -86,6 +84,7 @@ var AppPage = {
     _conn: function() {
         var self = this;
         clearTimeout(_authTimer);
+        self.appReady = false;
         if (this.cl) this.cl.close();
 
         setConnStatus('正在连接...', 'muted');
@@ -108,11 +107,26 @@ var AppPage = {
             }
         };
 
+        // ---- Unified message dispatch ----
         this.cl.onMsg = function(m) {
-            if (m.msg_type === 'error') {
+            var mt = m.msg_type;
+
+            // Auth-phase error
+            if (mt === 'error' && !self.appReady) {
                 setAuthStatus('登录失败：' + (m.err_msg || ''), 'top-off');
                 clearTimeout(_authTimer);
+                return;
             }
+
+            // Route to current module
+            if (self.mod === 'room' && RoomMod.handleMsg) RoomMod.handleMsg(m);
+            if (self.mod === 'private' && PrivMod.handleMsg) PrivMod.handleMsg(m);
+        };
+
+        // ---- Unified ACK dispatch ----
+        this.cl.onAck = function(msgId, status, rtt) {
+            if (self.mod === 'room' && RoomMod.handleAck) RoomMod.handleAck(msgId, status, rtt);
+            if (self.mod === 'private' && PrivMod.handleAck) PrivMod.handleAck(msgId, status, rtt);
         };
 
         this.cl.onLogin = function(user, token) {
@@ -121,7 +135,10 @@ var AppPage = {
             State.token(token);
             document.getElementById('topUser').textContent = user;
             document.getElementById('topToken').textContent = 'Token: ' + token.slice(0, 16) + '...';
-            setAuthStatus('已登录', 'top-ok');
+            self.appReady = true;
+            setAuthStatus('已认证', 'top-ok');
+            // Re-render current module now that we're ready
+            self._renderMod();
         };
 
         this.cl.connect()
@@ -147,22 +164,27 @@ var AppPage = {
             });
     },
 
+    _renderMod: function() {
+        var area = document.getElementById('modArea');
+        if (!area) return;
+        area.innerHTML = '';
+        if (this.mod === 'room') RoomMod.render(area, this.cl);
+        else if (this.mod === 'private') PrivMod.render(area, this.cl);
+        else if (this.mod === 'stress') StressMod.render(area);
+    },
+
     switchMod: function(m) {
         this.mod = m;
         document.querySelectorAll('.nav-item').forEach(function(el) {
             el.classList.toggle('active', el.dataset.mod === m);
         });
-        var area = document.getElementById('modArea'); area.innerHTML = '';
-        if (m === 'room') RoomMod.render(area, this.cl);
-        else if (m === 'private') PrivMod.render(area, this.cl);
-        else if (m === 'offline') OffMod.render(area, this.cl);
-        else if (m === 'stress') StressMod.render(area);
+        this._renderMod();
     }
 };
 
 function togglePanel() {
     var p = document.getElementById('sidePanel');
-    p.classList.toggle('collapsed');
+    if (p) p.classList.toggle('collapsed');
 }
 
 function openSecondWindow() {

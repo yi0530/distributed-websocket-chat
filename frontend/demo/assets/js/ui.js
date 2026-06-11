@@ -2,6 +2,7 @@
 var U = {
     esc: function(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); },
     msg: function(el, content, own, extra) {
+        if (!el) return;
         var d = document.createElement('div'); d.className = 'msg ' + (own ? 'msg-own' : 'msg-other');
         var from = content.from_user_id || content.from || '';
         var txt = content.text || '';
@@ -11,10 +12,12 @@ var U = {
         d.innerHTML = html; el.appendChild(d); el.scrollTop = el.scrollHeight;
     },
     sys: function(el, text) {
+        if (!el) return;
         var d = document.createElement('div'); d.className = 'msg-sys'; d.textContent = text;
         el.appendChild(d); el.scrollTop = el.scrollHeight;
     },
     proto: function(el, e) {
+        if (!el) return;
         var r = document.createElement('div'); r.className = 'pr pr-' + e.dir.toLowerCase();
         var sym = { SEND:'↑', RECV:'↓', SYSTEM:'●', ERROR:'⚠' }[e.dir]||'?';
         r.innerHTML = '<span class="pr-time">'+e.time+'</span> <span class="pr-dir">'+sym+' '+e.dir+'</span> <span class="pr-type">'+e.type+'</span> <span class="pr-sum">'+U.esc(e.summary)+'</span>';
