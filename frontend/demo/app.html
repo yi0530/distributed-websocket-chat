@@ -107,7 +107,7 @@ var AppPage = {
             }
         };
 
-        // ---- Unified message dispatch ----
+        // ---- Unified message dispatch (by msg_type, not current page) ----
         this.cl.onMsg = function(m) {
             var mt = m.msg_type;
 
@@ -118,15 +118,33 @@ var AppPage = {
                 return;
             }
 
-            // Route to current module
-            if (self.mod === 'room' && RoomMod.handleMsg) RoomMod.handleMsg(m);
-            if (self.mod === 'private' && PrivMod.handleMsg) PrivMod.handleMsg(m);
+            // Room messages — always route to RoomMod
+            if (mt === 'room_created' || mt === 'room_joined' || mt === 'room_chat' || mt === 'room_members' || mt === 'leave_room') {
+                if (RoomMod.handleMsg) RoomMod.handleMsg(m);
+                return;
+            }
+
+            // Private messages — always route to PrivMod
+            if (mt === 'private_conversation_created' || mt === 'private_chat') {
+                if (PrivMod.handleMsg) PrivMod.handleMsg(m);
+                return;
+            }
+
+            // Error while authenticated — show in current module
+            if (mt === 'error' && self.appReady) {
+                if (self.mod === 'room' && RoomMod.handleMsg) RoomMod.handleMsg(m);
+                else if (self.mod === 'private' && PrivMod.handleMsg) PrivMod.handleMsg(m);
+                return;
+            }
         };
 
-        // ---- Unified ACK dispatch ----
+        // ---- Unified ACK dispatch (by msg_id prefix) ----
         this.cl.onAck = function(msgId, status, rtt) {
-            if (self.mod === 'room' && RoomMod.handleAck) RoomMod.handleAck(msgId, status, rtt);
-            if (self.mod === 'private' && PrivMod.handleAck) PrivMod.handleAck(msgId, status, rtt);
+            if (msgId.indexOf('chat-') === 0) {
+                if (RoomMod.handleAck) RoomMod.handleAck(msgId, status, rtt);
+            } else if (msgId.indexOf('priv-') === 0) {
+                if (PrivMod.handleAck) PrivMod.handleAck(msgId, status, rtt);
+            }
         };
 
         this.cl.onLogin = function(user, token) {
