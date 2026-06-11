@@ -48,10 +48,10 @@ async def handle_login(websocket, proto: dict):
     ctx.is_authenticated = True
     ctx.token_exp = expires_at
 
-    try:
-        await asyncio.to_thread(start_online_presence, websocket)
-    except Exception:
-        logger.exception("启动在线状态失败，跳过在线状态登记：user=%s", username)
+    # Fire-and-forget: don't block login response on Redis
+    asyncio.create_task(
+        asyncio.to_thread(start_online_presence, websocket)
+    )
 
     logger.info("登录成功：user=%s", username)
 
@@ -68,4 +68,12 @@ async def handle_login(websocket, proto: dict):
         ),
     )
 
-    await deliver_offline_messages(websocket)
+    # Offline delivery also fire-and-forget to avoid blocking
+    asyncio.create_task(_deliver_offline_safe(websocket))
+
+
+async def _deliver_offline_safe(websocket):
+    try:
+        await deliver_offline_messages(websocket)
+    except Exception:
+        logger.exception("离线消息补发异常")

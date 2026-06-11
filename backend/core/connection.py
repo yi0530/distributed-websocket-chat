@@ -51,10 +51,9 @@ async def bind_context_from_token(websocket, token: str | None):
     ctx.is_authenticated = True
     ctx.token_exp = get_token_exp_ts(payload)
 
-    try:
-        await asyncio.to_thread(start_online_presence, websocket)
-    except Exception:
-        logger.exception("启动在线状态失败（token 连接）：user=%s", ctx.user_id)
+    asyncio.create_task(
+        asyncio.to_thread(start_online_presence, websocket)
+    )
 
 async def check_connection_auth(server_obj, request):
     token = extract_token_from_path(request.path)

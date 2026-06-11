@@ -35,8 +35,8 @@ async def handle_create_private_conversation(websocket, proto: dict):
     try:
         online_node = await asyncio.to_thread(get_user_online_node, target_user_id)
     except Exception:
-        logger.exception("查询目标用户在线状态失败：target=%s", target_user_id)
-        online_node = None
+        logger.exception("查询目标用户在线状态失败，继续创建私聊：target=%s", target_user_id)
+        online_node = True  # Redis 异常时放行，不阻断
     if not online_node:
         await send_error(websocket, "目标用户当前不在线，暂时无法创建私聊会话", msg_id=msg_id, code=404)
         return
