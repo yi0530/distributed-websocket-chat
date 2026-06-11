@@ -1,0 +1,39 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>私聊 — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body><div class="back"><a href="index.html">← Back</a></div>
+<div class="lay">
+<div class="main">
+<div class="bar">
+    <span class="conn-status off" id="st">○ Disconnected</span>
+    <span id="bd">-</span>
+    <span id="tg">Target: none</span>
+    <button onclick="O()" class="red" style="margin-left:auto">Logout</button>
+</div>
+<div class="bar">
+    <input id="u" placeholder="User" value="user001" style="width:100px">
+    <input id="p" type="password" placeholder="Pass" value="123456" style="width:80px">
+    <button onclick="L()" class="purple">Login</button>
+    <input id="tu" placeholder="Target user" value="user002" style="width:100px">
+    <button onclick="CP()">Start Chat</button>
+</div>
+<div class="chat" id="chat"></div>
+<div class="inp"><input id="ci" placeholder="Private message..."><button onclick="SP()">Send</button></div>
+</div>
+<div class="side"><div class="ph">Protocol</div><div class="pl" id="pl"></div></div>
+</div>
+<script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
+<script>
+var cl=null, cid=null, target=null, _c=document.getElementById('chat'), _p=document.getElementById('pl');
+function init(){if(cl)cl.close();cl=new WsClient(DemoConfig.WS_URL);window.__client=cl;cl.onLog=function(e){U.proto(_p,e)};cl.onState=function(s){U.conn(document.getElementById('st'),s==='connected')};cl.onMsg=onMsg;cl.onAck=function(id,st,rtt){U.sys(_c,'ACK '+st+(rtt?' rtt='+rtt+'ms':''))};}
+function onMsg(m){
+    var mt=m.msg_type;
+    if(mt==='login'&&m.code===200){State.user(m.from||(m.content&&m.content.username)||'');State.token((m.content&&m.content.token)||'');U.badge(document.getElementById('bd'),State.user())}
+    if(mt==='private_conversation_created'&&m.code===200){cid=m.content.conversation_id;target=m.content.participants.find(function(x){return x!==State.user()});State.privConv(cid);State.target(target);document.getElementById('tg').textContent='Target: '+target;U.sys(_c,'Private chat: '+target)}
+    if(mt==='private_chat'){var own=(m.content&&m.content.from_user_id)===State.user();U.msg(_c,m.content,own)}
+    if(mt==='error')U.sys(_c,'Error: '+(m.err_msg||''))
+}
+function ensure(){if(cl&&cl.connected)return Promise.resolve();init();return cl.connect()}
+function L(){ensure().then(function(){cl.login(document.getElementById('u').value.trim(),document.getElementById('p').value)})}
+function CP(){var t=document.getElementById('tu').value.trim();ensure().then(function(){cl.createPrivConv(t)})}
+function SP(){if(!cid)return;var t=document.getElementById('ci').value.trim();if(!t)return;ensure().then(function(){cl.sendPrivMsg(cid,t,true)});document.getElementById('ci').value=''}
+function O(){State.logout();cid=null;target=null;if(cl)cl.close();cl=null;U.clear(_c);U.clear(_p);U.badge(document.getElementById('bd'),'');U.conn(document.getElementById('st'),false);document.getElementById('tg').textContent='Target: none'}
+init();
+</script></body></html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>压测结果 — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<div class="back"><a href="index.html">← Back</a></div>
+<div class="dash">
+<h1 style="color:#60a5fa;font-size:20px;">1000 并发连接压力测试</h1>
+<p style="color:#94a3b8;font-size:12px;margin-bottom:16px;">服务器端 CLI 压测 | 阿里云 ECS 2vCPU 2GB | 本机环回 | 2026-06-10</p>
+
+<h2>WebSocket idle 1000</h2>
+<table><tr><th>指标</th><th>值</th></tr>
+<tr><td>连接成功</td><td class="hi">1000 / 1000</td></tr>
+<tr><td>登录成功</td><td class="hi">1000 / 1000</td></tr>
+<tr><td>错误率</td><td class="hi">0.0%</td></tr>
+<tr><td>平均连接耗时</td><td>28.1 ms</td></tr>
+<tr><td>最大连接耗时</td><td>68.2 ms</td></tr>
+<tr><td>RSS 峰值</td><td class="hi">42.39 MB</td></tr>
+<tr><td>CPU 峰值</td><td>0.1%</td></tr>
+<tr><td>ESTAB 峰值</td><td>2000</td></tr></table>
+
+<h2>Long Polling 1000</h2>
+<table><tr><th>指标</th><th>值</th></tr>
+<tr><td>总轮询</td><td class="hi">6000</td></tr>
+<tr><td>轮询成功</td><td class="hi">6000 / 6000</td></tr>
+<tr><td>错误率</td><td class="hi">0.0%</td></tr>
+<tr><td>平均延迟</td><td>5131.7 ms</td></tr>
+<tr><td>最大延迟</td><td>6115.8 ms</td></tr>
+<tr><td>RSS 峰值</td><td class="hi">28.31 MB</td></tr>
+<tr><td>CPU 峰值</td><td>0.0%</td></tr>
+<tr><td>ESTAB 峰值</td><td>2000</td></tr></table>
+
+<h2>WebSocket vs Long Polling 1000</h2>
+<table><tr><th>指标</th><th>WS 1000</th><th>LP 1000</th></tr>
+<tr><td>连接数</td><td>1000</td><td>1000</td></tr>
+<tr><td>成功率</td><td class="hi">100%</td><td class="hi">100%</td></tr>
+<tr><td>错误率</td><td class="hi">0%</td><td class="hi">0%</td></tr>
+<tr><td>RSS 峰值</td><td>42.39 MB</td><td>28.31 MB</td></tr>
+<tr><td>平均延迟</td><td>28.1 ms</td><td>5131 ms</td></tr></table>
+
+<h2>全阶段趋势</h2>
+<table><tr><th>规模</th><th>WS RSS</th><th>LP RSS</th><th>WS 错误率</th><th>LP 错误率</th><th>WS ESTAB</th></tr>
+<tr><td>100</td><td>32.53 MB</td><td>21.34 MB</td><td class="hi">0%</td><td class="hi">0%</td><td>200</td></tr>
+<tr><td>300</td><td>34.08 MB</td><td>21.63 MB</td><td class="hi">0%</td><td class="hi">0%</td><td>600</td></tr>
+<tr><td>500</td><td>37.95 MB</td><td>23.51 MB</td><td class="hi">0%</td><td class="hi">0%</td><td>1000</td></tr>
+<tr><td>1000</td><td>42.39 MB</td><td>28.31 MB</td><td class="hi">0%</td><td class="hi">0%</td><td>2000</td></tr></table>
+
+<h2>ACK 功能验证</h2>
+<table><tr><th>指标</th><th>值</th></tr>
+<tr><td>ACK 成功</td><td class="hi">100 / 100</td></tr>
+<tr><td>平均 ACK RTT</td><td>1.5 ms</td></tr></table>
+
+<p class="note">数据来自 tools/load_test/ CLI 压测，浏览器仅展示结果。ESTAB 约 2x 客户端因同机测试。</p>
+</div></body></html>
