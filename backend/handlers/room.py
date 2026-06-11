@@ -26,9 +26,13 @@ async def handle_create_room(websocket, proto: dict):
         return
 
     try:
-        conversation = create_group_conversation(name, ctx.user_id)
+        conversation = await asyncio.to_thread(create_group_conversation, name, ctx.user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("创建群聊异常：name=%s user=%s", name, ctx.user_id)
+        await send_error(websocket, "创建群聊失败，请重试", msg_id=msg_id, code=500)
         return
 
     await send_json(

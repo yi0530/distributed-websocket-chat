@@ -45,7 +45,8 @@ WsClient.prototype.connect = function() {
             clearTimeout(timer);
             if (settled) {
                 self.connected = false;
-                self._log('SYSTEM', 'close', 'Closed code=' + e.code);
+                var reason = 'code=' + e.code + ' reason=' + (e.reason || '') + ' wasClean=' + e.wasClean;
+                self._log('SYSTEM', 'close', 'Closed ' + reason);
                 self._fireState('disconnected');
             } else {
                 settled = true;

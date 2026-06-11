@@ -162,7 +162,22 @@ async def handle_client(websocket):
                 await send_error(websocket, err_msg, msg_id=proto.get("msg_id"))
                 continue
 
-            await dispatch_message(websocket, proto)
+            try:
+                await dispatch_message(websocket, proto)
+            except Exception:
+                logger.exception(
+                    "业务消息处理异常：msg_type=%s msg_id=%s",
+                    proto.get("msg_type"), proto.get("msg_id"),
+                )
+                try:
+                    await send_error(
+                        websocket,
+                        "服务端内部错误，请查看后端日志",
+                        msg_id=proto.get("msg_id"),
+                        code=500,
+                    )
+                except Exception:
+                    pass
     except ConnectionClosed:
         logger.info("连接断开：user=%s", ctx.user_id or "anonymous")
     except Exception:

@@ -32,9 +32,13 @@ async def handle_create_private_conversation(websocket, proto: dict):
         return
 
     try:
-        conversation = create_or_get_private_conversation(ctx.user_id, target_user_id)
+        conversation = await asyncio.to_thread(create_or_get_private_conversation, ctx.user_id, target_user_id)
     except ValueError as e:
         await send_error(websocket, str(e), msg_id=msg_id, code=400)
+        return
+    except Exception:
+        logger.exception("创建私聊异常：from=%s target=%s", ctx.user_id, target_user_id)
+        await send_error(websocket, "创建私聊失败，请重试", msg_id=msg_id, code=500)
         return
 
     await send_json(
