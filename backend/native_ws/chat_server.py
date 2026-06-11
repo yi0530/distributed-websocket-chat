@@ -129,16 +129,22 @@ async def handle_native_chat_client(reader: asyncio.StreamReader,
         traceback.print_exc()
 
     finally:
-        if conn is not None:
-            ctx = connections.get(conn)
-            if ctx is not None and ctx.user_id:
-                await stop_online_presence(conn)
-            connections.pop(conn, None)
+        # 1. 先关闭 TCP writer，避免 CLOSE_WAIT 积累
         try:
             writer.close()
             await writer.wait_closed()
         except Exception:
             pass
+
+        # 2. 在 TCP 已关闭后再清理应用层上下文
+        if conn is not None:
+            try:
+                ctx = connections.get(conn)
+                if ctx is not None and ctx.user_id:
+                    await stop_online_presence(conn)
+            except Exception:
+                pass
+            connections.pop(conn, None)
         logger.info("native_ws 连接清理完成")
 
 

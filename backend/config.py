@@ -42,7 +42,10 @@ ONLINE_STATUS_TTL_SECONDS = get_env_int("ONLINE_STATUS_TTL_SECONDS", 15)
 ONLINE_STATUS_RENEW_INTERVAL_SECONDS = get_env_int("ONLINE_STATUS_RENEW_INTERVAL_SECONDS", 5)
 DEDUPE_TTL_SECONDS = get_env_int("DEDUPE_TTL_SECONDS", 10 * 60)
 
-ENABLE_TEST_SEED = get_env_bool("ENABLE_TEST_SEED", False)
+# 用户存储路径（JSON 文件，用于 user_store 持久化）
+USER_STORE_PATH = os.getenv("USER_STORE_PATH", "./data/users.json")
+
+ENABLE_TEST_SEED = get_env_bool("ENABLE_TEST_SEED", True)
 
 TEST_ACCOUNTS = {
     "user001": "123456",

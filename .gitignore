@@ -17,6 +17,9 @@ tools/load_test/results/
 .DS_Store
 Thumbs.db
 
+# User data
+data/
+
 # IDE
 .vscode/
 .idea/

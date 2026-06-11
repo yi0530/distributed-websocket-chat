@@ -10,6 +10,7 @@ from backend.core.state import ConnectionContext, connections
 import backend.core.state as state_module
 from backend.handlers.heartbeat import handle_heartbeat
 from backend.handlers.login import handle_login
+from backend.handlers.register import handle_register
 from backend.utils.logger import logger
 from backend.config import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT
 from backend.handlers.user_list import handle_get_online_users
@@ -95,13 +96,15 @@ async def dispatch_message(websocket, proto: dict):
         await send_error(websocket, "缺少合法 msg_type", msg_id=msg_id)
         return
 
-    # 未认证连接：仅允许 login
-    if not ctx.is_authenticated and msg_type != "login":
+    # 未认证连接：仅允许 login / register
+    if not ctx.is_authenticated and msg_type not in ("login", "register"):
         await send_error(websocket, "请先登录获取 Token", msg_id=msg_id, code=401)
         return
 
     if msg_type == "login":
         await handle_login(websocket, proto)
+    elif msg_type == "register":
+        await handle_register(websocket, proto)
     elif msg_type == "heartbeat":
         await handle_heartbeat(websocket, proto)
     elif msg_type == "get_online_users":

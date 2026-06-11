@@ -1,6 +1,6 @@
-from backend.config import TEST_ACCOUNTS
 from backend.core.auth import decode_jwt_token, generate_jwt_token, get_token_exp_ts
 from backend.core.protocol import build_message, send_error, send_json
+from backend.core.user_store import verify_user
 from backend.utils.logger import logger
 from backend.core.offline_delivery_service import deliver_offline_messages
 from backend.core.online_presence_service import start_online_presence
@@ -34,7 +34,7 @@ async def handle_login(websocket, proto: dict):
         )
         return
 
-    if TEST_ACCOUNTS.get(username) != password:
+    if not verify_user(username, password):
         await send_error(websocket, "账号或密码错误", msg_id=msg_id, code=401)
         return
 
@@ -46,7 +46,10 @@ async def handle_login(websocket, proto: dict):
     ctx.is_authenticated = True
     ctx.token_exp = expires_at
 
-    start_online_presence(websocket)
+    try:
+        start_online_presence(websocket)
+    except Exception:
+        logger.exception("启动在线状态失败（Redis 不可用？）：user=%s", username)
 
     logger.info("登录成功：user=%s", username)
 

@@ -93,6 +93,18 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
         if not isinstance(password, str) or not password.strip():
             return False, "login 报文缺少合法 content"
 
+    # ====================== 注册 ======================
+    elif msg_type == "register":
+        username = proto.get("from")
+        content = proto.get("content") or {}
+        password = content.get("password") if isinstance(content, dict) else None
+
+        if not isinstance(username, str) or not username.strip():
+            return False, "register 报文缺少合法 from"
+
+        if not isinstance(password, str) or not password.strip():
+            return False, "register 报文缺少合法 content.password"
+
     # ====================== 心跳 ======================
     elif msg_type == "heartbeat":
         need_ack = proto.get("need_ack")
