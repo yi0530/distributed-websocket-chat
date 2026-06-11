@@ -1,3 +1,5 @@
+# NOTE: Functions in this module use synchronous Redis calls.
+# They MUST be called via asyncio.to_thread() from async code paths.
 from backend.config import DEDUPE_TTL_SECONDS, REDIS_KEY_PREFIX
 from backend.core.redis_client import redis_client
 

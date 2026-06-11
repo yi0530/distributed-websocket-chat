@@ -1,3 +1,5 @@
+import asyncio
+
 from backend.config import NODE_ID
 from backend.core.conversation_service import (
     create_or_get_private_conversation,
@@ -10,6 +12,7 @@ from backend.core.online_registry_service import get_user_online_node
 from backend.core.protocol import build_message, send_ack, send_error, send_json
 from backend.core.pubsub_service import publish_distributed_message
 from backend.core.state import connections
+from backend.utils.logger import logger
 
 
 async def handle_create_private_conversation(websocket, proto: dict):
@@ -29,7 +32,11 @@ async def handle_create_private_conversation(websocket, proto: dict):
         await send_error(websocket, "不能和自己创建私聊会话", msg_id=msg_id, code=400)
         return
 
-    online_node = get_user_online_node(target_user_id)
+    try:
+        online_node = await asyncio.to_thread(get_user_online_node, target_user_id)
+    except Exception:
+        logger.exception("查询目标用户在线状态失败：target=%s", target_user_id)
+        online_node = None
     if not online_node:
         await send_error(websocket, "目标用户当前不在线，暂时无法创建私聊会话", msg_id=msg_id, code=404)
         return
@@ -70,7 +77,12 @@ async def handle_private_chat(websocket, proto: dict):
         await send_error(websocket, "private_chat 报文缺少合法 text", msg_id=msg_id)
         return
 
-    if has_processed_message(ctx.user_id, msg_id):
+    try:
+        already = await asyncio.to_thread(has_processed_message, ctx.user_id, msg_id)
+    except Exception:
+        logger.exception("消息去重检查失败：user=%s msg_id=%s", ctx.user_id, msg_id)
+        already = False
+    if already:
         if need_ack:
             await send_ack(websocket, msg_id, status="duplicate")
         return
@@ -103,21 +115,28 @@ async def handle_private_chat(websocket, proto: dict):
         text=text.strip(),
     )
 
-    publish_distributed_message(
-        {
-            "source_node_id": NODE_ID,
-            "msg_id": msg_id,
-            "msg_type": "private_chat",
-            "conversation_id": conversation_id,
-            "from_user_id": ctx.user_id,
-            "to_user_id": target_user_id,
-            "payload": {
-                "text": text.strip(),
+    try:
+        await asyncio.to_thread(
+            publish_distributed_message,
+            {
+                "source_node_id": NODE_ID,
+                "msg_id": msg_id,
+                "msg_type": "private_chat",
+                "conversation_id": conversation_id,
+                "from_user_id": ctx.user_id,
+                "to_user_id": target_user_id,
+                "payload": {
+                    "text": text.strip(),
+                },
             },
-        }
-    )
+        )
+    except Exception:
+        logger.exception("发布分布式消息失败：user=%s msg_id=%s", ctx.user_id, msg_id)
 
-    mark_message_processed(ctx.user_id, msg_id)
+    try:
+        await asyncio.to_thread(mark_message_processed, ctx.user_id, msg_id)
+    except Exception:
+        logger.exception("标记消息已处理失败：user=%s msg_id=%s", ctx.user_id, msg_id)
 
     if need_ack:
         await send_ack(websocket, msg_id, status="processed")

@@ -12,6 +12,7 @@ from backend.core.local_delivery_service import (
     deliver_room_message_online_only_locally,
 )
 from backend.core.redis_client import redis_client
+from backend.utils.logger import logger
 
 PUBSUB_CHANNEL = f"{REDIS_KEY_PREFIX}:messages"
 
@@ -89,7 +90,11 @@ async def handle_distributed_message(message: dict) -> None:
     if not isinstance(text, str) or not text.strip():
         return
 
-    if has_node_delivery_processed(NODE_ID, from_user_id, msg_id):
+    try:
+        if await asyncio.to_thread(has_node_delivery_processed, NODE_ID, from_user_id, msg_id):
+            return
+    except Exception:
+        logger.exception("节点去重检查失败：node=%s sender=%s msg_id=%s", NODE_ID, from_user_id, msg_id)
         return
 
     if msg_type == "room_chat":
@@ -114,4 +119,7 @@ async def handle_distributed_message(message: dict) -> None:
     else:
         return
 
-    mark_node_delivery_processed(NODE_ID, from_user_id, msg_id)
+    try:
+        await asyncio.to_thread(mark_node_delivery_processed, NODE_ID, from_user_id, msg_id)
+    except Exception:
+        logger.exception("标记节点投递状态失败：node=%s sender=%s msg_id=%s", NODE_ID, from_user_id, msg_id)

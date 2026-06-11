@@ -1,3 +1,4 @@
+import asyncio
 from time import time
 
 from backend.config import NODE_ID
@@ -6,6 +7,7 @@ from backend.core.offline_message_service import store_offline_message
 from backend.core.online_registry_service import get_user_online_node
 from backend.core.protocol import build_message, send_json
 from backend.core.state import connections
+from backend.utils.logger import logger
 
 
 def get_online_websockets_by_user_id(user_id: str) -> list:
@@ -48,23 +50,31 @@ async def deliver_room_message_locally(
         if user_id == from_user_id:
             continue
 
-        online_node = get_user_online_node(user_id)
+        try:
+            online_node = await asyncio.to_thread(get_user_online_node, user_id)
+        except Exception:
+            logger.exception("查询用户在线节点失败，按离线处理：user=%s", user_id)
+            online_node = None
         if online_node and online_node != NODE_ID:
             continue
 
-        store_offline_message(
-            user_id,
-            {
-                "msg_id": msg_id,
-                "conversation_id": conversation_id,
-                "from_user_id": from_user_id,
-                "msg_type": "room_chat",
-                "payload": {
-                    "text": text,
+        try:
+            await asyncio.to_thread(
+                store_offline_message,
+                user_id,
+                {
+                    "msg_id": msg_id,
+                    "conversation_id": conversation_id,
+                    "from_user_id": from_user_id,
+                    "msg_type": "room_chat",
+                    "payload": {
+                        "text": text,
+                    },
+                    "timestamp": int(time()),
                 },
-                "timestamp": int(time()),
-            },
-        )
+            )
+        except Exception:
+            logger.exception("存储群聊离线消息失败：user=%s msg_id=%s", user_id, msg_id)
 
 
 async def deliver_private_message_locally(
@@ -97,23 +107,31 @@ async def deliver_private_message_locally(
             await send_json(target_ws, response)
         return
 
-    online_node = get_user_online_node(to_user_id)
+    try:
+        online_node = await asyncio.to_thread(get_user_online_node, to_user_id)
+    except Exception:
+        logger.exception("查询私聊目标在线节点失败，按离线处理：user=%s", to_user_id)
+        online_node = None
     if online_node and online_node != NODE_ID:
         return
 
-    store_offline_message(
-        to_user_id,
-        {
-            "msg_id": msg_id,
-            "conversation_id": conversation_id,
-            "from_user_id": from_user_id,
-            "msg_type": "private_chat",
-            "payload": {
-                "text": text,
+    try:
+        await asyncio.to_thread(
+            store_offline_message,
+            to_user_id,
+            {
+                "msg_id": msg_id,
+                "conversation_id": conversation_id,
+                "from_user_id": from_user_id,
+                "msg_type": "private_chat",
+                "payload": {
+                    "text": text,
+                },
+                "timestamp": int(time()),
             },
-            "timestamp": int(time()),
-        },
-    )
+        )
+    except Exception:
+        logger.exception("存储私聊离线消息失败：user=%s msg_id=%s", to_user_id, msg_id)
 
 
 async def deliver_room_message_online_only_locally(

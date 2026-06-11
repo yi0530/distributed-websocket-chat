@@ -1,3 +1,5 @@
+import asyncio
+
 from backend.config import NODE_ID
 from backend.core.conversation_service import (
     create_group_conversation,
@@ -11,6 +13,7 @@ from backend.core.local_delivery_service import deliver_room_message_locally
 from backend.core.protocol import build_message, send_ack, send_error, send_json
 from backend.core.pubsub_service import publish_distributed_message
 from backend.core.state import connections
+from backend.utils.logger import logger
 
 
 async def handle_create_room(websocket, proto: dict):
@@ -146,7 +149,12 @@ async def handle_room_chat(websocket, proto: dict):
         await send_error(websocket, "room_chat 报文缺少合法 text", msg_id=msg_id)
         return
 
-    if has_processed_message(ctx.user_id, msg_id):
+    try:
+        already = await asyncio.to_thread(has_processed_message, ctx.user_id, msg_id)
+    except Exception:
+        logger.exception("消息去重检查失败：user=%s msg_id=%s", ctx.user_id, msg_id)
+        already = False
+    if already:
         if need_ack:
             await send_ack(websocket, msg_id, status="duplicate")
         return
@@ -172,20 +180,27 @@ async def handle_room_chat(websocket, proto: dict):
         text=text.strip(),
     )
 
-    publish_distributed_message(
-        {
-            "source_node_id": NODE_ID,
-            "msg_id": msg_id,
-            "msg_type": "room_chat",
-            "conversation_id": conversation_id,
-            "from_user_id": ctx.user_id,
-            "payload": {
-                "text": text.strip(),
+    try:
+        await asyncio.to_thread(
+            publish_distributed_message,
+            {
+                "source_node_id": NODE_ID,
+                "msg_id": msg_id,
+                "msg_type": "room_chat",
+                "conversation_id": conversation_id,
+                "from_user_id": ctx.user_id,
+                "payload": {
+                    "text": text.strip(),
+                },
             },
-        }
-    )
+        )
+    except Exception:
+        logger.exception("发布分布式消息失败：user=%s msg_id=%s", ctx.user_id, msg_id)
 
-    mark_message_processed(ctx.user_id, msg_id)
+    try:
+        await asyncio.to_thread(mark_message_processed, ctx.user_id, msg_id)
+    except Exception:
+        logger.exception("标记消息已处理失败：user=%s msg_id=%s", ctx.user_id, msg_id)
 
     if need_ack:
         await send_ack(websocket, msg_id, status="processed")
