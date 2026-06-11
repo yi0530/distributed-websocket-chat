@@ -54,7 +54,10 @@ var PrivMod = {
             this._renderMsg(this._msgs[i]);
         }
 
-        if (AppPage.appReady && this.cl) this.cl.listMyConversations();
+        if (AppPage.appReady && this.cl) {
+            this.cl.listMyConversations();
+            if (this.cid) this.cl.getChatHistory(this.cid);
+        }
     },
 
     renderList: function(el) {

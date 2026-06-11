@@ -30,8 +30,11 @@ var RoomMod = {
             this._renderMsg(this._msgs[i]);
         }
 
-        // Auto-refresh list on first render
-        if (AppPage.appReady && this.cl) this.cl.listRooms();
+        // Auto-refresh list and history on first render
+        if (AppPage.appReady && this.cl) {
+            this.cl.listRooms();
+            if (this.room) this.cl.getChatHistory(this.room);
+        }
     },
 
     renderList: function(el) {
