@@ -1,12 +1,16 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Login — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body><div class="back"><a href="index.html">← Back</a></div>
-<div class="frm">
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Login — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<div class="bar" style="padding:8px 16px;font-size:12px;background:#0f3460;">
+    <span>WS:</span><input id="wsUrlInput" style="width:200px;padding:4px 8px;border:1px solid #333;border-radius:4px;background:#1a1a2e;color:#e0e0e0;font-size:12px;" onchange="DemoConfig.WS_URL=this.value">
+    <a href="index.html" style="color:#60a5fa;text-decoration:none;margin-left:auto;">← Back</a>
+</div>
+<div class="frm" id="loginSection">
 <h2>Register / Login</h2>
 <label>Username (3-32 a-z 0-9 _)</label><input id="u" placeholder="e.g. new_user">
 <label>Password (6-128 chars)</label><input id="p" type="password" placeholder="e.g. 123456">
 <div class="err" id="err"></div>
-<button onclick="R()">Register</button>
-<button onclick="L()" style="background:#7c3aed">Login</button>
-<button onclick="O()" class="red" style="margin-top:12px">Logout / Clear</button>
+<button onclick="LoginPage.register()">Register</button>
+<button onclick="LoginPage.login()" style="background:#7c3aed">Login</button>
+<button onclick="LoginPage.logout()" style="background:#dc2626;margin-top:12px">Logout / Clear</button>
 <p style="font-size:11px;color:#666;margin-top:8px">Test: user001 / 123456 &nbsp; user002 / 654321</p>
 </div>
 <div class="lay" style="margin-top:20px">
@@ -14,18 +18,6 @@
 <div class="side"><div class="ph">Protocol</div><div class="pl" id="pl"></div></div>
 </div>
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
-<script>
-var cl = null, le = document.getElementById('err'), _p = document.getElementById('pl'), _c = document.getElementById('chat');
-function init() { if(cl) cl.close(); cl = new WsClient(DemoConfig.WS_URL); window.__client=cl; cl.onLog=function(e){U.proto(_p,e)}; cl.onState=function(s){U.conn(document.getElementById('st'),s==='connected')}; cl.onMsg=onMsg; }
-function onMsg(m) {
-    if (m.msg_type==='login'&&m.code===200) { State.user(m.from||(m.content&&m.content.username)||''); State.token((m.content&&m.content.token)||''); U.badge(document.getElementById('bd'),State.user()); U.tok(document.getElementById('tk'),State.token()); U.sys(_c,'Logged in: '+State.user()); le.textContent=''; }
-    if (m.msg_type==='register'&&m.code===200) { U.sys(_c,'Registered: '+(m.content&&m.content.username||'')); le.textContent='OK: Registered'; }
-    if (m.msg_type==='error') { le.textContent = (m.code||'')+' '+(m.err_msg||''); U.sys(_c, 'Error: '+m.err_msg); }
-    if (m.msg_type==='register'&&m.code===409) { le.textContent='409: 用户名已存在'; }
-}
-function ensure() { if(cl&&cl.connected) return Promise.resolve(); init(); return cl.connect(); }
-function R() { var u=document.getElementById('u').value.trim(),p=document.getElementById('p').value; le.textContent=''; ensure().then(function(){cl.register(u,p)}); }
-function L() { var u=document.getElementById('u').value.trim(),p=document.getElementById('p').value; le.textContent=''; ensure().then(function(){cl.login(u,p)}); }
-function O() { State.logout(); if(cl) cl.close(); cl=null; U.clear(_c);U.clear(_p);U.badge(document.getElementById('bd'),'');U.tok(document.getElementById('tk'),'');U.conn(document.getElementById('st'),false);le.textContent=''; }
-init();
-</script></body></html>
+<script src="assets/js/pages/login-page.js"></script>
+<script>LoginPage.init();</script>
+</body></html>

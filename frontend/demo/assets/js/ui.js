@@ -6,7 +6,7 @@ var U = {
         var from = content.from_user_id || content.from || '';
         var txt = content.text || '';
         var html = '<span class="msg-sender">' + U.esc(from) + '</span><div class="msg-text">' + U.esc(txt) + '</div>';
-        if (extra && extra.offline) html += '<span class="msg-offline">[offline]</span>';
+        if (extra && extra.offline) html += '<span class="msg-offline">[离线补发]</span>';
         if (extra && extra.ack) { var a = extra.ack; html += '<span class="msg-ack ack-' + a + '">' + a + '</span>'; }
         d.innerHTML = html; el.appendChild(d); el.scrollTop = el.scrollHeight;
     },

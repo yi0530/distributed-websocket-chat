@@ -1,51 +1,25 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>离线消息 — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body><div class="back"><a href="index.html">← Back</a></div>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>离线消息 — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<a href="index.html" style="padding:6px 12px;font-size:12px;color:#60a5fa;text-decoration:none;display:block;">← Back</a>
 <div class="lay">
 <div class="main">
 <div class="bar">
-    <span class="conn-status off" id="st">○ Disconnected</span>
-    <span id="bd">-</span>
-    <span id="tg">Target: none</span>
-    <span id="hint" style="color:#facc15;font-size:11px">Step: Login first</span>
-    <button onclick="D()" style="margin-left:auto">Disconnect</button>
-    <button onclick="RC()" class="purple">Reconnect</button>
-    <button onclick="O()" class="red">Logout</button>
+    <span class="conn-status off" id="st">○ Disconnected</span> <span id="bd">-</span> <span id="tg">Target: none</span>
+    <span id="hint" style="color:#facc15;font-size:11px;margin-left:8px;">Step 1: Login as receiver, then disconnect</span>
+    <button onclick="OfflinePage.disconnect()" style="margin-left:auto;padding:4px 10px;border:none;border-radius:4px;background:#f59e0b;color:#fff;cursor:pointer;font-size:11px;">Disconnect</button>
+    <button onclick="OfflinePage.reconnectAndLogin()" style="padding:4px 10px;border:none;border-radius:4px;background:#7c3aed;color:#fff;cursor:pointer;font-size:11px;">Reconnect &amp; Login</button>
+    <button onclick="OfflinePage.logout()" style="padding:4px 10px;border:none;border-radius:4px;background:#dc2626;color:#fff;cursor:pointer;font-size:11px;">Logout</button>
 </div>
-<div class="bar">
-    <input id="u" placeholder="User" value="user001" style="width:100px">
-    <input id="p" type="password" placeholder="Pass" value="123456" style="width:80px">
-    <button onclick="L()" class="purple">Login</button>
-    <input id="tu" placeholder="Target user" value="user002" style="width:100px">
-    <button onclick="CP()">Start Chat</button>
+<div class="bar" style="flex-wrap:wrap;">
+    <input id="u" placeholder="User" value="user001" style="width:100px"><input id="p" type="password" placeholder="Pass" value="123456" style="width:80px">
+    <button onclick="OfflinePage.login()" style="padding:4px 10px;border:none;border-radius:4px;background:#7c3aed;color:#fff;cursor:pointer;font-size:11px;">Login</button>
+    <input id="tu" placeholder="Target user" value="user002" style="width:100px"><button onclick="OfflinePage.startChat()" style="padding:4px 10px;border:none;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer;font-size:11px;">Start Chat</button>
 </div>
 <div class="chat" id="chat"></div>
-<div class="inp"><input id="ci" placeholder="Message (goes to offline user)..."><button onclick="SP()">Send</button></div>
+<div class="inp"><input id="ci" placeholder="Message (goes to offline user)..."><button onclick="OfflinePage.sendMsg()">Send</button></div>
 </div>
 <div class="side"><div class="ph">Protocol</div><div class="pl" id="pl"></div></div>
 </div>
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
-<script>
-var cl=null, cid=null, target=null, _c=document.getElementById('chat'), _p=document.getElementById('pl');
-function init(){if(cl)cl.close();cl=new WsClient(DemoConfig.WS_URL);window.__client=cl;cl.onLog=function(e){U.proto(_p,e)};cl.onState=function(s){U.conn(document.getElementById('st'),s==='connected')};cl.onMsg=onMsg;}
-function onMsg(m){
-    var mt=m.msg_type;
-    if(mt==='login'&&m.code===200){State.user(m.from||(m.content&&m.content.username)||'');State.token((m.content&&m.content.token)||'');U.badge(document.getElementById('bd'),State.user());U.sys(_c,'Login: '+State.user())}
-    if(mt==='private_conversation_created'&&m.code===200){cid=m.content.conversation_id;target=m.content.participants.find(function(x){return x!==State.user()});State.privConv(cid);State.target(target);document.getElementById('tg').textContent='Target: '+target;U.sys(_c,'Private chat: '+target);document.getElementById('hint').textContent='Ready. Disconnect receiver first, then send'}
-    if(mt==='private_chat'){
-        var from=(m.content&&m.content.from_user_id)||'';
-        var own=from===State.user();
-        var extra={};
-        if(!own) extra.offline=true;
-        U.msg(_c,m.content,own,extra);
-        document.getElementById('hint').textContent='Offline message received!';
-    }
-    if(mt==='error')U.sys(_c,'Error: '+(m.err_msg||''))
-}
-function ensure(){if(cl&&cl.connected)return Promise.resolve();init();return cl.connect()}
-function L(){ensure().then(function(){cl.login(document.getElementById('u').value.trim(),document.getElementById('p').value)})}
-function CP(){var t=document.getElementById('tu').value.trim();ensure().then(function(){cl.createPrivConv(t)})}
-function SP(){if(!cid)return;var t=document.getElementById('ci').value.trim();if(!t)return;ensure().then(function(){cl.sendPrivMsg(cid,t,false)});document.getElementById('ci').value='';document.getElementById('hint').textContent='Sent! Now receiver reconnects to get offline message'}
-function D(){if(cl)cl.close();U.conn(document.getElementById('st'),false);U.sys(_c,'[Disconnected - you are now offline]');document.getElementById('hint').textContent='Offline now. Wait for sender to send, then Reconnect'}
-function RC(){init();cl.connect().then(function(){U.sys(_c,'[Reconnected]');document.getElementById('hint').textContent='Reconnected! Login again to receive offline messages'}).catch(function(){U.sys(_c,'[Reconnect failed]')})}
-function O(){State.logout();cid=null;target=null;if(cl)cl.close();cl=null;U.clear(_c);U.clear(_p);U.badge(document.getElementById('bd'),'');U.conn(document.getElementById('st'),false);document.getElementById('tg').textContent='Target: none';document.getElementById('hint').textContent='Step: Login first'}
-init();
-</script></body></html>
+<script src="assets/js/pages/offline-message-page.js"></script>
+<script>OfflinePage.init();</script>
+</body></html>

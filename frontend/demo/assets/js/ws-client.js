@@ -9,6 +9,8 @@ function WsClient(url) {
     this.onMsg = null;
     this.onState = null;
     this.onAck = null;
+    this.onLogin = null;
+    this._loginUser = null;
 }
 WsClient.prototype.connect = function() {
     var self = this;
@@ -45,7 +47,11 @@ WsClient.prototype._onmsg = function(raw) {
         s += ' ack_for=' + oid.slice(0,16);
         if (self._ack[oid]) { var rtt = Date.now() - self._ack[oid].time; self._ack[oid].status = st; self._ack[oid].rtt = rtt; s += ' rtt=' + rtt + 'ms'; if (self.onAck) self.onAck(oid, st, rtt); }
     }
-    if (mt === 'login' && msg.code === 200) { s += ' token=' + ((msg.content&&msg.content.token)||'').slice(0,12)+'...'; }
+    if (mt === 'login' && msg.code === 200) {
+        s += ' token=' + ((msg.content&&msg.content.token)||'').slice(0,12)+'...';
+        if (self._loginUser && self.onLogin) self.onLogin(self._loginUser, (msg.content&&msg.content.token)||'');
+        self._loginUser = null;
+    }
     if (mt === 'register' && msg.code === 200) { s += ' ok'; }
     if (mt === 'room_created' && msg.code === 200) { s += ' rid=' + ((msg.content&&msg.content.conversation_id)||'').slice(0,8); }
     if (mt === 'room_chat' || mt === 'private_chat') { var t = (msg.content&&msg.content.text)||''; s += ' from='+(msg.content&&msg.content.from_user_id||'?')+' "'+t.slice(0,20)+'"'; }
@@ -62,7 +68,7 @@ WsClient.prototype._fireState = function(s) { if (this.onState) this.onState(s);
 
 // Public API
 WsClient.prototype.register = function(u,p) { return this._send(Proto.register(u,p)); };
-WsClient.prototype.login = function(u,p) { return this._send(Proto.login(u,p)); };
+WsClient.prototype.login = function(u,p) { this._loginUser = u; return this._send(Proto.login(u,p)); };
 WsClient.prototype.createRoom = function(name) { return this._send(Proto.createRoom(name||'Room')); };
 WsClient.prototype.joinRoom = function(rid) { return this._send(Proto.joinRoom(rid)); };
 WsClient.prototype.sendRoomMsg = function(rid, text, ack) {
