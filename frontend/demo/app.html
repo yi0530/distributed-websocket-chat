@@ -1,0 +1,92 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Chat App — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<div class="app">
+<nav class="app-nav">
+    <div class="nav-header">Chat Demo</div>
+    <div class="nav-item active" data-mod="room" onclick="AppPage.switchMod('room')"># 群聊</div>
+    <div class="nav-item" data-mod="private" onclick="AppPage.switchMod('private')">@ 私聊</div>
+    <div class="nav-item" data-mod="offline" onclick="AppPage.switchMod('offline')">↻ 离线消息</div>
+    <div class="nav-item" data-mod="stress" onclick="AppPage.switchMod('stress')">&#9776; 压测结果</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" style="color:#60a5fa;font-size:11px;text-align:center;" onclick="openSecondWindow()">+ 打开第二窗口</div>
+</nav>
+<div class="app-body">
+    <div class="app-top">
+        <span class="top-user" id="topUser">-</span>
+        <span class="top-conn top-off" id="topConn">○</span>
+        <span class="top-token" id="topToken"></span>
+        <button onclick="doLogout()">退出登录</button>
+    </div>
+    <div id="modArea" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>
+</div>
+<div class="app-panel" id="sidePanel">
+    <div class="panel-head">Protocol <button onclick="togglePanel()">×</button></div>
+    <div class="panel-body" id="protoPanel"></div>
+</div>
+</div>
+<script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
+<script src="assets/js/modules/room-module.js"></script>
+<script src="assets/js/modules/private-module.js"></script>
+<script src="assets/js/modules/offline-module.js"></script>
+<script src="assets/js/modules/stress-module.js"></script>
+<script>
+var AppPage = {
+    cl: null, mod: 'room', _p: null, _panel: null,
+
+    init: function() {
+        if (!State.loggedIn()) { window.location.href = 'login.html'; return; }
+        this._p = document.getElementById('protoPanel');
+        this._panel = document.getElementById('sidePanel');
+        this._conn();
+        this.switchMod(this.mod);
+        document.getElementById('topUser').textContent = State.user();
+        document.getElementById('topToken').textContent = 'Token: ' + (State.token() || '').slice(0, 16) + '...';
+    },
+
+    _conn: function() {
+        var self = this;
+        if (this.cl) this.cl.close();
+        this.cl = new WsClient(DemoConfig.WS_URL);
+        window.__client = this.cl;
+        this.cl.onLog = function(e) { U.proto(self._p, e); };
+        this.cl.onState = function(s) {
+            var el = document.getElementById('topConn');
+            el.textContent = s === 'connected' ? '● Connected' : '○ Disconnected';
+            el.className = 'top-conn ' + (s === 'connected' ? 'top-ok' : 'top-off');
+        };
+        this.cl.onLogin = function(user, token) {
+            if (!State.user()) { State.user(user); State.token(token); }
+        };
+        var self2 = this;
+        this.cl.connect().then(function() {
+            var u = State.user(), p = State.pwd();
+            if (u && p) self2.cl.login(u, p);
+        });
+    },
+
+    switchMod: function(m) {
+        this.mod = m;
+        document.querySelectorAll('.nav-item').forEach(function(el) {
+            el.classList.toggle('active', el.dataset.mod === m);
+        });
+        var area = document.getElementById('modArea'); area.innerHTML = '';
+        if (m === 'room') RoomMod.render(area, this.cl);
+        else if (m === 'private') PrivMod.render(area, this.cl);
+        else if (m === 'offline') OffMod.render(area, this.cl);
+        else if (m === 'stress') StressMod.render(area);
+    }
+};
+
+function togglePanel() {
+    var p = document.getElementById('sidePanel');
+    p.classList.toggle('collapsed');
+}
+function openSecondWindow() {
+    window.open('index.html?ws=' + encodeURIComponent(DemoConfig.WS_URL), '_blank');
+}
+function doLogout() {
+    State.logout();
+    if (AppPage.cl) AppPage.cl.close();
+    window.location.href = 'login.html';
+}
+AppPage.init();
+</script></body></html>

@@ -1,23 +1,30 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Login — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
-<div class="bar" style="padding:8px 16px;font-size:12px;background:#0f3460;">
-    <span>WS:</span><input id="wsUrlInput" style="width:200px;padding:4px 8px;border:1px solid #333;border-radius:4px;background:#1a1a2e;color:#e0e0e0;font-size:12px;" onchange="DemoConfig.setWsUrl(this.value)">
-    <a href="index.html" style="color:#60a5fa;text-decoration:none;margin-left:auto;">← Back</a>
-</div>
-<div class="frm" id="loginSection">
-<h2>Register / Login</h2>
-<label>Username (3-32 a-z 0-9 _)</label><input id="u" placeholder="e.g. new_user">
-<label>Password (6-128 chars)</label><input id="p" type="password" placeholder="e.g. 123456">
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Login — Chat Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<div class="login-page">
+<div class="login-box">
+<h2>Distributed WebSocket Chat</h2>
+<label>Username</label><input id="u" placeholder="user001" autofocus>
+<label>Password</label><input id="p" type="password" placeholder="123456">
 <div class="err" id="err"></div>
-<button onclick="LoginPage.register()">Register</button>
-<button onclick="LoginPage.login()" style="background:#7c3aed">Login</button>
-<button onclick="LoginPage.logout()" style="background:#dc2626;margin-top:12px">Logout / Clear</button>
-<p style="font-size:11px;color:#666;margin-top:8px">Test: user001 / 123456 &nbsp; user002 / 654321</p>
-</div>
-<div class="lay" style="margin-top:20px">
-<div class="main"><div class="bar"><span class="conn-status off" id="st">○ Disconnected</span> <span id="bd">-</span> <span id="tk">No token</span></div><div class="chat" id="chat"></div></div>
-<div class="side"><div class="ph">Protocol</div><div class="pl" id="pl"></div></div>
-</div>
+<button onclick="doRegister()">Register</button>
+<button onclick="doLogin()" style="background:#611f69;">Login</button>
+<p class="info">Test: user001 / 123456 &nbsp; user002 / 654321 &nbsp; WS: <span id="wsLabel"></span></p>
+</div></div>
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
-<script src="assets/js/pages/login-page.js"></script>
-<script>LoginPage.init();</script>
-</body></html>
+<script>
+var cl = null, _err = document.getElementById('err');
+document.getElementById('wsLabel').textContent = DemoConfig.WS_URL;
+function initCl() { if (cl) cl.close(); cl = new WsClient(DemoConfig.WS_URL); window.__client = cl; cl.onMsg = onMsg; cl.onLogin = onLogin; }
+function onMsg(m) {
+    if (m.msg_type === 'register' && m.code === 200) { _err.textContent = 'OK: Registered as ' + ((m.content && m.content.username) || ''); _err.style.color = '#4ade80'; }
+    if (m.msg_type === 'error') { _err.textContent = (m.code || '') + ' ' + (m.err_msg || ''); _err.style.color = '#f87171'; }
+}
+function onLogin(user, token) {
+    State.user(user); State.token(token);
+    State.pwd(document.getElementById('p').value);
+    cl.close(); window.location.href = 'app.html';
+}
+function ensure() { if (cl && cl.connected) return Promise.resolve(); initCl(); return cl.connect(); }
+function doRegister() { var u = document.getElementById('u').value.trim(), p = document.getElementById('p').value; _err.textContent = ''; ensure().then(function() { cl.register(u, p); }); }
+function doLogin() { var u = document.getElementById('u').value.trim(), p = document.getElementById('p').value; _err.textContent = ''; ensure().then(function() { cl.login(u, p); }); }
+initCl();
+</script></body></html>

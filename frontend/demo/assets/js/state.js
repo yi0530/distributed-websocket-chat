@@ -7,6 +7,7 @@ const State = {
 
     user: function(v) { return arguments.length ? this.set('user',v) : this.get('user'); },
     token: function(v) { return arguments.length ? this.set('token',v) : this.get('token'); },
+    pwd: function(v) { return arguments.length ? this.set('pwd',v) : this.get('pwd'); },
     room: function(v) { return arguments.length ? this.set('room',v) : this.get('room'); },
     privConv: function(v) { return arguments.length ? this.set('privConv',v) : this.get('privConv'); },
     target: function(v) { return arguments.length ? this.set('target',v) : this.get('target'); },
@@ -15,7 +16,7 @@ const State = {
 
     logout: function() {
         if (window.__client) { window.__client.close(); window.__client = null; }
-        var keys = ['user','token','room','privConv','target'];
+        var keys = ['user','token','pwd','room','privConv','target'];
         for (var i=0;i<keys.length;i++) this.del(keys[i]);
     }
 };

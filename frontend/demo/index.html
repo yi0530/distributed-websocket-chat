@@ -1,17 +1,16 @@
 <!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Demo — WebSocket Chat</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
-<div class="idx">
-<h1>Distributed WebSocket Chat — Demo</h1>
-<p class="sub">手写RFC6455 | JWT | Redis | 1000并发压测 &nbsp; WS: <input id="wsUrl" style="padding:4px 8px;border:1px solid #333;border-radius:4px;background:#1a1a2e;color:#e0e0e0;font-size:12px;width:200px;" onchange="updateWs()"></p>
-<div class="cards">
-<div class="card" onclick="go('login.html')"><h2>1. 注册 / 登录 &amp; JWT</h2><p>注册、JWT登录、重复注册(409)、错误密码(401)</p><p class="hint">1个窗口</p></div>
-<div class="card" onclick="go('room-chat.html')"><h2>2. 群聊</h2><p>创建房间→加入→广播→ACK确认</p><p class="hint">2窗口：A=user001 B=user002</p></div>
-<div class="card" onclick="go('private-chat.html')"><h2>3. 私聊</h2><p>创建私聊会话→互发消息→ACK</p><p class="hint">2窗口：A=user001 B=user002</p></div>
-<div class="card" onclick="go('offline-message.html')"><h2>4. 离线消息</h2><p>接收方离线→发送消息→重新上线→补发</p><p class="hint">2窗口：sender + receiver</p></div>
-<div class="card" onclick="window.open('stress-dashboard.html')"><h2>5. 1000并发压测</h2><p>WS vs Long Polling 内存对比</p><p class="hint">静态数据展示</p></div>
+<div class="idx-page">
+<div class="idx-box">
+<h1>Distributed WebSocket Chat</h1>
+<p>手写RFC6455 | JWT | Redis | 1000并发压测</p>
+<div class="ws-row"><input id="wsUrl" placeholder="ws://127.0.0.1:8768"></div>
+<div class="btn-row">
+<button onclick="go('login.html')">Login / Register</button>
+<button onclick="go('app.html')" class="purple">Enter App</button>
+</div>
 </div></div>
 <script src="assets/js/config.js"></script>
 <script>
 document.getElementById('wsUrl').value = DemoConfig.WS_URL;
-function updateWs() { var v = document.getElementById('wsUrl').value; DemoConfig.setWsUrl(v); alert('WS URL: ' + v + ' (click any card to open demo)'); }
-function go(url) { var w = document.getElementById('wsUrl').value; window.open(url + '?ws=' + encodeURIComponent(w), '_blank'); }
+function go(url) { var w = document.getElementById('wsUrl').value; DemoConfig.setWsUrl(w); window.location.href = url + '?ws=' + encodeURIComponent(w); }
 </script></body></html>
