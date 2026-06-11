@@ -9,8 +9,9 @@
 <div class="card" onclick="go('offline-message.html')"><h2>4. 离线消息</h2><p>接收方离线→发送消息→重新上线→补发</p><p class="hint">2窗口：sender + receiver</p></div>
 <div class="card" onclick="window.open('stress-dashboard.html')"><h2>5. 1000并发压测</h2><p>WS vs Long Polling 内存对比</p><p class="hint">静态数据展示</p></div>
 </div></div>
+<script src="assets/js/config.js"></script>
 <script>
-document.getElementById('wsUrl').value = new URLSearchParams(location.search).get('ws') || 'ws://127.0.0.1:8768';
+document.getElementById('wsUrl').value = DemoConfig.WS_URL;
 function updateWs() { var v = document.getElementById('wsUrl').value; DemoConfig.setWsUrl(v); alert('WS URL: ' + v + ' (click any card to open demo)'); }
 function go(url) { var w = document.getElementById('wsUrl').value; window.open(url + '?ws=' + encodeURIComponent(w), '_blank'); }
 </script></body></html>
