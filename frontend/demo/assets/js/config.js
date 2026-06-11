@@ -2,6 +2,8 @@
 const DemoConfig = {
     APP_VERSION: 1,
     ACK_TIMEOUT_MS: 10000,
+    CONNECT_TIMEOUT_MS: 8000,
+    LOGIN_TIMEOUT_MS: 8000,
 
     get WS_URL() { return getWsUrl(); },
     set WS_URL(v) { setWsUrl(v); },

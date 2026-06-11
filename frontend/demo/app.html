@@ -114,7 +114,7 @@ function togglePanel() {
 }
 
 function openSecondWindow() {
-    window.open('index.html?ws=' + encodeURIComponent(DemoConfig.WS_URL), '_blank');
+    window.open('index.html?ws=' + encodeURIComponent(DemoConfig.WS_URL) + '&fresh=1', '_blank', 'noopener,noreferrer');
 }
 
 function doLogout() {

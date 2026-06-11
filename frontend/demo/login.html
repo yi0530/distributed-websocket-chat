@@ -25,14 +25,25 @@
 </div>
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
 <script>
+(function() {
+  var p = new URLSearchParams(location.search);
+  if (p.get('fresh') === '1') {
+    ['demo_user','demo_token','demo_pwd','demo_room','demo_privConv','demo_target'].forEach(function(k) {
+      try { sessionStorage.removeItem(k); } catch(e) {}
+    });
+  }
+})();
+
 var cl = null,
     _err = document.getElementById('err'),
     _btnL = document.getElementById('btnLogin'),
-    _btnR = document.getElementById('btnRegister');
+    _btnR = document.getElementById('btnRegister'),
+    _respTimer = null;
 
 document.getElementById('wsLabel').textContent = DemoConfig.WS_URL;
 
 function setStatus(text, type) {
+  clearTimeout(_respTimer);
   _err.textContent = text;
   if (type === 'ok') _err.style.color = '#10b981';
   else if (type === 'error') _err.style.color = '#ef4444';
@@ -42,6 +53,14 @@ function setStatus(text, type) {
 function setBusy(busy) {
   _btnL.disabled = busy;
   _btnR.disabled = busy;
+}
+
+function startRespTimeout(action) {
+  var timeout = DemoConfig.LOGIN_TIMEOUT_MS || 8000;
+  _respTimer = setTimeout(function() {
+    setStatus(action + '响应超时，请检查后端是否正常处理 ' + action + ' 消息', 'error');
+    setBusy(false);
+  }, timeout);
 }
 
 function initCl() {
@@ -64,6 +83,7 @@ function onMsg(m) {
 }
 
 function onLogin(user, token) {
+  clearTimeout(_respTimer);
   State.user(user); State.token(token);
   State.pwd(document.getElementById('p').value);
   cl.close();
@@ -77,6 +97,7 @@ function ensure() {
 }
 
 function doRegister() {
+  clearTimeout(_respTimer);
   var u = document.getElementById('u').value.trim();
   var p = document.getElementById('p').value;
   if (!u || !p) { setStatus('请输入用户名和密码', 'error'); return; }
@@ -87,15 +108,20 @@ function doRegister() {
   ensure()
     .then(function() {
       setStatus('正在注册...', 'info');
+      startRespTimeout('注册');
       cl.register(u, p);
     })
-    .catch(function() {
-      setStatus('无法连接 WebSocket 服务，请检查 WS 地址或后端是否启动', 'error');
+    .catch(function(err) {
+      var msg = (err && err.message && err.message.indexOf('timeout') >= 0)
+        ? '连接后端超时，请检查 WebSocket 地址或后端服务'
+        : '无法连接 WebSocket 服务，请检查 WS 地址或后端是否启动';
+      setStatus(msg, 'error');
       setBusy(false);
     });
 }
 
 function doLogin() {
+  clearTimeout(_respTimer);
   var u = document.getElementById('u').value.trim();
   var p = document.getElementById('p').value;
   if (!u || !p) { setStatus('请输入用户名和密码', 'error'); return; }
@@ -106,10 +132,14 @@ function doLogin() {
   ensure()
     .then(function() {
       setStatus('正在登录...', 'info');
+      startRespTimeout('登录');
       cl.login(u, p);
     })
-    .catch(function() {
-      setStatus('无法连接 WebSocket 服务，请检查 WS 地址或后端是否启动', 'error');
+    .catch(function(err) {
+      var msg = (err && err.message && err.message.indexOf('timeout') >= 0)
+        ? '连接后端超时，请检查 WebSocket 地址或后端服务'
+        : '无法连接 WebSocket 服务，请检查 WS 地址或后端是否启动';
+      setStatus(msg, 'error');
       setBusy(false);
     });
 }

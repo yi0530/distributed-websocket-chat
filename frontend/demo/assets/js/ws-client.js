@@ -17,10 +17,51 @@ WsClient.prototype.connect = function() {
     return new Promise(function(resolve, reject) {
         self._log('SYSTEM', 'connect', 'Connecting ' + self.url);
         self.ws = new WebSocket(self.url);
-        self.ws.onopen = function() { self.connected = true; self._fireState('connected'); self._log('SYSTEM', 'connect', 'Connected'); resolve(); };
+
+        var settled = false;
+        var timeout = DemoConfig.CONNECT_TIMEOUT_MS || 8000;
+        var timer = setTimeout(function() {
+            if (settled) return;
+            settled = true;
+            try { self.ws && self.ws.close(); } catch(e) {}
+            self.connected = false;
+            self._fireState('error');
+            self._log('ERROR', 'timeout', 'WebSocket connect timeout (' + timeout + 'ms)');
+            reject(new Error('connect timeout'));
+        }, timeout);
+
+        self.ws.onopen = function() {
+            clearTimeout(timer);
+            if (settled) return;
+            settled = true;
+            self.connected = true;
+            self._fireState('connected');
+            self._log('SYSTEM', 'connect', 'Connected');
+            resolve();
+        };
         self.ws.onmessage = function(e) { self._onmsg(e.data); };
-        self.ws.onclose = function(e) { self.connected = false; self._log('SYSTEM', 'close', 'Closed code=' + e.code); self._fireState('disconnected'); };
-        self.ws.onerror = function() { self._log('ERROR', 'error', 'WebSocket error'); self._fireState('error'); reject(new Error('connect error')); };
+        self.ws.onclose = function(e) {
+            clearTimeout(timer);
+            if (settled) {
+                self.connected = false;
+                self._log('SYSTEM', 'close', 'Closed code=' + e.code);
+                self._fireState('disconnected');
+            } else {
+                settled = true;
+                self.connected = false;
+                self._log('SYSTEM', 'close', 'Closed code=' + e.code);
+                self._fireState('error');
+                reject(new Error('connect closed code=' + e.code));
+            }
+        };
+        self.ws.onerror = function() {
+            clearTimeout(timer);
+            if (settled) return;
+            settled = true;
+            self._log('ERROR', 'error', 'WebSocket error');
+            self._fireState('error');
+            reject(new Error('connect error'));
+        };
     });
 };
 WsClient.prototype.close = function() {
