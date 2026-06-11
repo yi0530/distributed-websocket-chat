@@ -29,7 +29,8 @@
 <div class="app-body">
   <div class="app-top">
     <span class="top-user" id="topUser">-</span>
-    <span class="top-conn top-off" id="topConn">○ 未连接</span>
+    <span class="top-conn" id="topConn">正在连接...</span>
+    <span class="top-auth muted" id="topAuth">等待连接</span>
     <span class="top-token" id="topToken"></span>
     <span class="top-actions">
       <button onclick="togglePanel()" title="切换协议面板">协议面板</button>
@@ -56,6 +57,19 @@
 <script src="assets/js/modules/offline-module.js"></script>
 <script src="assets/js/modules/stress-module.js"></script>
 <script>
+var _authTimer = null;
+
+function setConnStatus(text, cls) {
+  var el = document.getElementById('topConn');
+  el.textContent = text;
+  el.className = 'top-conn ' + (cls || 'muted');
+}
+function setAuthStatus(text, cls) {
+  var el = document.getElementById('topAuth');
+  el.textContent = text;
+  el.className = 'top-auth ' + (cls || 'muted');
+}
+
 var AppPage = {
     cl: null, mod: 'room', _p: null, _panel: null,
 
@@ -63,36 +77,74 @@ var AppPage = {
         if (!State.loggedIn()) { window.location.href = 'login.html'; return; }
         this._p = document.getElementById('protoPanel');
         this._panel = document.getElementById('sidePanel');
-        this._conn();
-        this.switchMod(this.mod);
         document.getElementById('topUser').textContent = State.user();
         document.getElementById('topToken').textContent = 'Token: ' + (State.token() || '').slice(0, 16) + '...';
+        this._conn();
+        this.switchMod(this.mod);
     },
 
     _conn: function() {
         var self = this;
+        clearTimeout(_authTimer);
         if (this.cl) this.cl.close();
+
+        setConnStatus('正在连接...', 'muted');
+        setAuthStatus('等待连接', 'muted');
+
         this.cl = new WsClient(DemoConfig.WS_URL);
         window.__client = this.cl;
+
         this.cl.onLog = function(e) { U.proto(self._p, e); };
+
         this.cl.onState = function(s) {
-            var el = document.getElementById('topConn');
             if (s === 'connected') {
-                el.textContent = '● 已连接';
-                el.className = 'top-conn top-ok';
+                setConnStatus('● 已连接', 'top-ok');
+            } else if (s === 'error') {
+                setConnStatus('连接失败', 'top-off');
+            } else if (s === 'disconnected') {
+                setConnStatus('○ 未连接', 'top-off');
             } else {
-                el.textContent = '○ 未连接';
-                el.className = 'top-conn top-off';
+                setConnStatus(s, 'muted');
             }
         };
-        this.cl.onLogin = function(user, token) {
-            if (!State.user()) { State.user(user); State.token(token); }
+
+        this.cl.onMsg = function(m) {
+            if (m.msg_type === 'error') {
+                setAuthStatus('登录失败：' + (m.err_msg || ''), 'top-off');
+                clearTimeout(_authTimer);
+            }
         };
-        var self2 = this;
-        this.cl.connect().then(function() {
-            var u = State.user(), p = State.pwd();
-            if (u && p) self2.cl.login(u, p);
-        });
+
+        this.cl.onLogin = function(user, token) {
+            clearTimeout(_authTimer);
+            State.user(user);
+            State.token(token);
+            document.getElementById('topUser').textContent = user;
+            document.getElementById('topToken').textContent = 'Token: ' + token.slice(0, 16) + '...';
+            setAuthStatus('已登录', 'top-ok');
+        };
+
+        this.cl.connect()
+            .then(function() {
+                setAuthStatus('自动登录中...', 'muted');
+                var u = State.user(), p = State.pwd();
+                if (u && p) {
+                    self.cl.login(u, p);
+                    var timeout = DemoConfig.LOGIN_TIMEOUT_MS || 8000;
+                    _authTimer = setTimeout(function() {
+                        setAuthStatus('自动登录响应超时', 'top-off');
+                    }, timeout);
+                } else {
+                    setAuthStatus('无登录凭据', 'top-off');
+                }
+            })
+            .catch(function(err) {
+                setConnStatus('连接失败', 'top-off');
+                setAuthStatus('无法自动登录', 'top-off');
+                var msg = (err && err.message && err.message.indexOf('timeout') >= 0)
+                    ? 'connect timeout' : 'WebSocket error';
+                U.proto(self._p, { id: 0, time: new Date().toISOString().slice(11,23), dir: 'ERROR', type: 'connect', summary: msg });
+            });
     },
 
     switchMod: function(m) {
@@ -118,6 +170,7 @@ function openSecondWindow() {
 }
 
 function doLogout() {
+    clearTimeout(_authTimer);
     State.logout();
     if (AppPage.cl) AppPage.cl.close();
     window.location.href = 'login.html';

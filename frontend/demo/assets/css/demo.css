@@ -523,6 +523,18 @@ a:hover { color: var(--accent-hover); }
   border-radius: 12px;
 }
 
+.app-top .top-auth {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+.app-top .muted {
+  color: var(--text-tertiary);
+  background: rgba(107, 107, 117, 0.1);
+}
+
 .app-top .top-ok {
   color: var(--green);
   background: rgba(16, 185, 129, 0.1);
