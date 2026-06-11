@@ -1,6 +1,8 @@
 import asyncio
 from time import time
 
+from websockets import State as WsState
+
 from backend.config import NODE_ID
 from backend.core.conversation_service import get_conversation
 from backend.core.offline_message_service import store_offline_message
@@ -14,6 +16,8 @@ def get_online_websockets_by_user_id(user_id: str) -> list:
     result = []
     for websocket, ctx in connections.items():
         if ctx.is_authenticated and ctx.user_id == user_id:
+            if websocket.state != WsState.OPEN:
+                continue
             result.append(websocket)
     return result
 

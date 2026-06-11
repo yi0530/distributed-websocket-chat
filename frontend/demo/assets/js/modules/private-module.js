@@ -3,8 +3,9 @@ var PrivMod = {
     cl: null, cid: null, target: null, _msgs: [], _convs: [],
 
     _recoverState: function(m) {
-        if (!this.cid && m.conversation_id) {
-            this.cid = m.conversation_id;
+        var msgCid = m.content && m.content.conversation_id;
+        if (!this.cid && msgCid) {
+            this.cid = msgCid;
             State.privConv(this.cid);
         }
         var fromId = m.content && m.content.from_user_id;
@@ -137,7 +138,8 @@ var PrivMod = {
             return;
         }
         if (mt === 'private_chat') {
-            if (this.cid && m.conversation_id && m.conversation_id !== this.cid) return;
+            var msgCid2 = m.content && m.content.conversation_id;
+            if (this.cid && msgCid2 && msgCid2 !== this.cid) return;
             this._recoverState(m);
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });

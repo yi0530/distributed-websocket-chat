@@ -53,9 +53,7 @@ async def bind_context_from_token(websocket, token: str | None):
     ctx.is_authenticated = True
     ctx.token_exp = get_token_exp_ts(payload)
 
-    asyncio.create_task(
-        asyncio.to_thread(start_online_presence, websocket)
-    )
+    asyncio.create_task(start_online_presence(websocket))
 
 async def check_connection_auth(server_obj, request):
     token = extract_token_from_path(request.path)

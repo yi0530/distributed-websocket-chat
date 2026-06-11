@@ -45,6 +45,14 @@ def get_user_online_node(user_id: str) -> str | None:
     return None
 
 
+def list_all_online_users() -> list[str]:
+    """扫描 Redis 中所有在线用户 key，返回 user_id 列表。"""
+    pattern = f"{REDIS_KEY_PREFIX}:online:user:*"
+    keys = redis_client.keys(pattern)
+    prefix = f"{REDIS_KEY_PREFIX}:online:user:"
+    return [k[len(prefix):] for k in keys if k.startswith(prefix)]
+
+
 def clear_user_online(user_id: str, owner_node_id: str | None = None) -> None:
     if not isinstance(user_id, str) or not user_id.strip():
         raise ValueError("用户ID不合法")

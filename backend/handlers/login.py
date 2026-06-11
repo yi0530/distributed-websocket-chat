@@ -49,9 +49,7 @@ async def handle_login(websocket, proto: dict):
     ctx.token_exp = expires_at
 
     # Fire-and-forget: don't block login response on Redis
-    asyncio.create_task(
-        asyncio.to_thread(start_online_presence, websocket)
-    )
+    asyncio.create_task(start_online_presence(websocket))
 
     logger.info("登录成功：user=%s", username)
 
@@ -68,11 +66,9 @@ async def handle_login(websocket, proto: dict):
         ),
     )
 
-    # Offline delivery also fire-and-forget to avoid blocking
-    asyncio.create_task(_deliver_offline_safe(websocket))
-
-
-async def _deliver_offline_safe(websocket):
+    # Deliver offline messages synchronously after login response.
+    # Must be awaited, not fire-and-forget: websockets.send() is not
+    # concurrency-safe, and the message loop may send responses concurrently.
     try:
         await deliver_offline_messages(websocket)
     except Exception:

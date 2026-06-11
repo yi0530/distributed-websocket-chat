@@ -133,7 +133,7 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
             return False, "create_room 报文缺少合法 name"
 
     # ====================== 会话相关（基于 conversation_id） ======================
-    elif msg_type in {"join_room", "leave_room", "participants"}:
+    elif msg_type in {"join_room", "leave_room", "get_room_members"}:
         conversation_id = proto.get("conversation_id")
         if not isinstance(conversation_id, str) or not conversation_id.strip():
             return False, f"{msg_type} 报文缺少合法 conversation_id"

@@ -104,7 +104,8 @@ var RoomMod = {
             return;
         }
         if (mt === 'room_chat') {
-            if (this.room && m.conversation_id && m.conversation_id !== this.room) return;
+            var msgCid = m.content && m.content.conversation_id;
+            if (this.room && msgCid && msgCid !== this.room) return;
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
             this._saveMsgs();

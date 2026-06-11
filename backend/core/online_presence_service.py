@@ -31,13 +31,14 @@ async def _online_status_renew_task(websocket):
             break
 
 
-def start_online_presence(websocket) -> None:
-    ctx = connections[websocket]
-
+async def start_online_presence(websocket) -> None:
+    ctx = connections.get(websocket)
+    if ctx is None:
+        return
     if not ctx.is_authenticated or not ctx.user_id:
         return
 
-    set_user_online(ctx.user_id, NODE_ID)
+    await asyncio.to_thread(set_user_online, ctx.user_id, NODE_ID)
 
     if ctx.online_status_task is not None:
         ctx.online_status_task.cancel()
