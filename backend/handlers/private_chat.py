@@ -9,6 +9,7 @@ from backend.core.conversation_service import (
 )
 from backend.core.dedupe_service import has_processed_message, mark_message_processed
 from backend.core.local_delivery_service import deliver_private_message_locally
+from backend.core.message_store import save_message
 from backend.core.protocol import build_message, send_ack, send_error, send_json
 from backend.core.pubsub_service import publish_distributed_message
 from backend.core.state import connections
@@ -117,6 +118,21 @@ async def handle_private_chat(websocket, proto: dict):
         to_user_id=target_user_id,
         text=text.strip(),
     )
+
+    try:
+        await asyncio.to_thread(
+            save_message,
+            conversation_id,
+            {
+                "msg_id": msg_id,
+                "msg_type": "private_chat",
+                "from_user_id": ctx.user_id,
+                "text": text.strip(),
+                "timestamp": proto.get("timestamp", 0),
+            },
+        )
+    except Exception:
+        logger.exception("保存私聊消息失败：msg_id=%s", msg_id)
 
     try:
         await asyncio.to_thread(
