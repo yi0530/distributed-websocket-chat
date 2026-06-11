@@ -11,7 +11,7 @@ from backend.core.conversation_service import (
 )
 from backend.core.message_store import get_recent_messages
 from backend.core.dedupe_service import has_processed_message, mark_message_processed
-from backend.core.local_delivery_service import deliver_room_message_locally
+from backend.core.local_delivery_service import deliver_room_message_locally, get_online_websockets_by_user_id
 from backend.core.message_store import save_message
 from backend.core.protocol import build_message, send_ack, send_error, send_json
 from backend.core.pubsub_service import publish_distributed_message
@@ -312,3 +312,83 @@ async def handle_get_chat_history(websocket, proto: dict):
             },
         ),
     )
+
+
+async def _broadcast_to_conversation(conversation_id: str, msg: dict, skip_user_id: str = ""):
+    """广播消息给会话中所有在线参与者，跳过指定用户。"""
+    try:
+        conversation = await asyncio.to_thread(get_conversation, conversation_id)
+    except ValueError:
+        return
+    for user_id in conversation.get("participants", set()):
+        if user_id == skip_user_id:
+            continue
+        for ws in get_online_websockets_by_user_id(user_id):
+            await send_json(ws, msg)
+
+
+async def handle_read_receipt(websocket, proto: dict):
+    msg_id = proto.get("msg_id")
+    conversation_id = proto.get("conversation_id")
+    last_read_msg_id = proto.get("last_read_msg_id", "")
+    ctx = connections[websocket]
+
+    if not ctx.is_authenticated or not ctx.user_id:
+        await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
+        return
+
+    receipt = build_message(
+        "read_receipt",
+        msg_id=msg_id,
+        code=200,
+        content={
+            "conversation_id": conversation_id,
+            "user_id": ctx.user_id,
+            "last_read_msg_id": last_read_msg_id,
+        },
+    )
+    await _broadcast_to_conversation(conversation_id, receipt, skip_user_id=ctx.user_id)
+
+
+async def handle_typing_start(websocket, proto: dict):
+    msg_id = proto.get("msg_id")
+    conversation_id = proto.get("conversation_id")
+    ctx = connections[websocket]
+
+    if not ctx.is_authenticated or not ctx.user_id:
+        await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
+        return
+
+    notify = build_message(
+        "user_typing",
+        msg_id=msg_id,
+        code=200,
+        content={
+            "conversation_id": conversation_id,
+            "user_id": ctx.user_id,
+            "typing": True,
+        },
+    )
+    await _broadcast_to_conversation(conversation_id, notify, skip_user_id=ctx.user_id)
+
+
+async def handle_typing_stop(websocket, proto: dict):
+    msg_id = proto.get("msg_id")
+    conversation_id = proto.get("conversation_id")
+    ctx = connections[websocket]
+
+    if not ctx.is_authenticated or not ctx.user_id:
+        await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
+        return
+
+    notify = build_message(
+        "user_typing",
+        msg_id=msg_id,
+        code=200,
+        content={
+            "conversation_id": conversation_id,
+            "user_id": ctx.user_id,
+            "typing": False,
+        },
+    )
+    await _broadcast_to_conversation(conversation_id, notify, skip_user_id=ctx.user_id)

@@ -130,4 +130,7 @@ WsClient.prototype.sendPrivMsg = function(cid, text, ack) {
 WsClient.prototype.listRooms = function() { return this._send(Proto.listRooms()); };
 WsClient.prototype.listMyConversations = function() { return this._send(Proto.listMyConversations()); };
 WsClient.prototype.getChatHistory = function(cid) { return this._send(Proto.getChatHistory(cid)); };
+WsClient.prototype.sendReadReceipt = function(cid, lastMsgId) { return this._send(Proto.readReceipt(cid, lastMsgId)); };
+WsClient.prototype.sendTypingStart = function(cid) { return this._send(Proto.typingStart(cid)); };
+WsClient.prototype.sendTypingStop = function(cid) { return this._send(Proto.typingStop(cid)); };
 WsClient.prototype.pending = function() { return this._ack; };

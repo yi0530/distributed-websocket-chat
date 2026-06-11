@@ -21,7 +21,10 @@ from backend.handlers.room import (
     handle_join_room,
     handle_leave_room,
     handle_list_rooms,
+    handle_read_receipt,
     handle_room_chat,
+    handle_typing_start,
+    handle_typing_stop,
 )
 from backend.handlers.private_chat import (
     handle_create_private_conversation,
@@ -124,6 +127,12 @@ async def dispatch_message(websocket, proto: dict):
         await handle_list_rooms(websocket, proto)
     elif msg_type == "get_chat_history":
         await handle_get_chat_history(websocket, proto)
+    elif msg_type == "read_receipt":
+        await handle_read_receipt(websocket, proto)
+    elif msg_type == "typing_start":
+        await handle_typing_start(websocket, proto)
+    elif msg_type == "typing_stop":
+        await handle_typing_stop(websocket, proto)
     elif msg_type == "room_chat":
         await handle_room_chat(websocket, proto)
     elif msg_type == "create_private_conversation":

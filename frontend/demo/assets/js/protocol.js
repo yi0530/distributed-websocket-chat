@@ -36,4 +36,13 @@ const Proto = {
     getChatHistory: function(cid) {
         return this.base('get_chat_history', this.genMsgId('hist'), { conversation_id: cid });
     },
+    readReceipt: function(cid, lastMsgId) {
+        return this.base('read_receipt', this.genMsgId('rr'), { conversation_id: cid, last_read_msg_id: lastMsgId || '' });
+    },
+    typingStart: function(cid) {
+        return this.base('typing_start', this.genMsgId('ts'), { conversation_id: cid });
+    },
+    typingStop: function(cid) {
+        return this.base('typing_stop', this.genMsgId('tp'), { conversation_id: cid });
+    },
 };

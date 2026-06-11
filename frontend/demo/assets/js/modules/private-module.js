@@ -1,6 +1,6 @@
 // Private chat module — messages cached, state recovered, CID-isolated, conversation list
 var PrivMod = {
-    cl: null, cid: null, target: null, _msgs: [], _convs: [],
+    cl: null, cid: null, target: null, _msgs: [], _convs: [], _typingUsers: {}, _typingTimer: null,
 
     _recoverState: function(m) {
         var msgCid = m.content && m.content.conversation_id;
@@ -38,7 +38,8 @@ var PrivMod = {
             '<span class="hint" id="pv-label">' + (this.target ? '与 ' + this.target + ' 聊天中' : '') + '</span>' +
             '</div>' +
             '<div class="chat-msgs" id="pv-msgs"></div>' +
-            '<div class="chat-input"><input id="pv-input" placeholder="输入私聊消息..." onkeydown="if(event.key===\'Enter\')PrivMod.send()"><button id="pv-btn-send" onclick="PrivMod.send()">发送</button></div>';
+            '<div id="pv-typing" style="height:20px;padding:0 16px;font-size:12px;color:#6b7280;font-style:italic"></div>' +
+            '<div class="chat-input"><input id="pv-input" placeholder="输入私聊消息..." onkeydown="if(event.key===\'Enter\')PrivMod.send()" oninput="PrivMod._onTyping()"><button id="pv-btn-send" onclick="PrivMod.send()">发送</button></div>';
 
         U.sys(document.getElementById('pv-msgs'), '提示：离线消息测试请先在线建立会话，再关闭对方窗口继续发送');
 
@@ -155,6 +156,7 @@ var PrivMod = {
                 this._renderMsg(entryP);
             }
             this._saveMsgs(histCidP);
+            setTimeout(function(self) { self._sendReadReceipt(); }, 200, this);
             return;
         }
         if (mt === 'private_chat') {
@@ -164,6 +166,26 @@ var PrivMod = {
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
             this._saveMsgs(m.content && m.content.conversation_id);
+            this._sendReadReceipt();
+            return;
+        }
+        if (mt === 'user_typing') {
+            var tuid = m.content && m.content.user_id;
+            var tcid = m.content && m.content.conversation_id;
+            if (!tuid || (this.cid && tcid && tcid !== this.cid)) return;
+            if (m.content.typing) {
+                this._typingUsers[tuid] = Date.now();
+            } else {
+                delete this._typingUsers[tuid];
+            }
+            this._showTyping();
+            return;
+        }
+        if (mt === 'read_receipt') {
+            var rruid = m.content && m.content.user_id;
+            var rrcid = m.content && m.content.conversation_id;
+            if (!rruid || (this.cid && rrcid && rrcid !== this.cid)) return;
+            this._pushSys(rruid + ' 已读');
             return;
         }
         if (mt === 'error') {
@@ -204,6 +226,37 @@ var PrivMod = {
             var own = (entry.m.content && entry.m.content.from_user_id) === State.user();
             U.msg(document.getElementById('pv-msgs'), entry.m.content, own);
         }
+    },
+
+    _onTyping: function() {
+        if (!this.cid || !this.cl) return;
+        this.cl.sendTypingStart(this.cid);
+        clearTimeout(this._typingTimer);
+        this._typingTimer = setTimeout(function(self) {
+            if (self.cid && self.cl) self.cl.sendTypingStop(self.cid);
+        }, 2000, this);
+    },
+
+    _showTyping: function() {
+        var el = document.getElementById('pv-typing');
+        if (!el) return;
+        var now = Date.now();
+        var names = [];
+        for (var uid in this._typingUsers) {
+            if (now - this._typingUsers[uid] < 5000) {
+                names.push(uid);
+            } else {
+                delete this._typingUsers[uid];
+            }
+        }
+        el.textContent = names.length > 0 ? names.join(', ') + ' 正在输入...' : '';
+    },
+
+    _sendReadReceipt: function() {
+        if (!this.cid || !this.cl || this._msgs.length === 0) return;
+        var last = this._msgs[this._msgs.length - 1];
+        var lastMid = (last.m && last.m.msg_id) || '';
+        if (lastMid) this.cl.sendReadReceipt(this.cid, lastMid);
     },
 
     startChat: function() {

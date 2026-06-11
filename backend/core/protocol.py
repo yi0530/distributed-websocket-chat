@@ -132,6 +132,12 @@ def validate_protocol(proto: dict[str, Any]) -> tuple[bool, str]:
         if not isinstance(conversation_id, str) or not conversation_id.strip():
             return False, "get_chat_history 报文缺少合法 conversation_id"
 
+    # ====================== 已读回执 / 输入状态 ======================
+    elif msg_type in ("read_receipt", "typing_start", "typing_stop"):
+        conversation_id = proto.get("conversation_id")
+        if not isinstance(conversation_id, str) or not conversation_id.strip():
+            return False, f"{msg_type} 报文缺少合法 conversation_id"
+
     # ====================== 创建群聊会话 ======================
     elif msg_type == "create_room":
         name = proto.get("name")
