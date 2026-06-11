@@ -1,12 +1,36 @@
-// Private chat module — messages cached and routed by msg_type
+// Private chat module — messages cached, state recovered from delivered messages
 var PrivMod = {
     cl: null, cid: null, target: null, _msgs: [],
+
+    _recoverState: function(m) {
+        // Recover conversation_id and target from a delivered private_chat
+        if (!this.cid && m.conversation_id) {
+            this.cid = m.conversation_id;
+            State.privConv(this.cid);
+        }
+        var fromId = m.content && m.content.from_user_id;
+        var toId = m.content && m.content.to_user_id;
+        var me = State.user();
+        var other = null;
+        if (fromId && fromId !== me) other = fromId;
+        else if (toId && toId !== me) other = toId;
+        if (other) {
+            this.target = other;
+            State.target(other);
+        } else if (!this.target) {
+            this.target = State.target();
+        }
+        // Update DOM if visible
+        var elT = document.getElementById('pv-target');
+        if (elT && this.target) elT.value = this.target;
+        var elL = document.getElementById('pv-label');
+        if (elL && this.target) elL.textContent = '与 ' + this.target + ' 聊天中';
+    },
 
     render: function(area, client) {
         this.cl = client;
         this.cid = State.privConv();
         this.target = State.target();
-        var self = this;
         area.innerHTML =
             '<div class="toolbar">' +
             '<input id="pv-target" placeholder="目标用户" value="' + (this.target || 'user002') + '" style="width:120px">' +
@@ -16,17 +40,14 @@ var PrivMod = {
             '<div class="chat-msgs" id="pv-msgs"></div>' +
             '<div class="chat-input"><input id="pv-input" placeholder="输入私聊消息..." onkeydown="if(event.key===\'Enter\')PrivMod.send()"><button id="pv-btn-send" onclick="PrivMod.send()">发送</button></div>';
 
-        // Offline test note
         U.sys(document.getElementById('pv-msgs'), '提示：离线消息测试请先在线建立会话，再关闭对方窗口继续发送');
 
-        // Disable buttons if not ready
         if (!AppPage.appReady) {
             var b1 = document.getElementById('pv-btn-start'); if (b1) b1.disabled = true;
             var b2 = document.getElementById('pv-btn-send'); if (b2) b2.disabled = true;
             U.sys(document.getElementById('pv-msgs'), '后端认证未完成，暂不能操作');
         }
 
-        // Replay cached messages
         for (var i = 0; i < this._msgs.length; i++) {
             this._renderMsg(this._msgs[i]);
         }
@@ -35,7 +56,12 @@ var PrivMod = {
     handleMsg: function(m) {
         var mt = m.msg_type;
         if (mt === 'private_conversation_created' && m.code === 200) {
-            this.cid = m.content.conversation_id;
+            var newCid = m.content.conversation_id;
+            // Clear cache if switching to a new conversation
+            if (newCid && this.cid && newCid !== this.cid) {
+                this._msgs = [];
+            }
+            this.cid = newCid;
             State.privConv(this.cid);
             var parts = (m.content && m.content.participants) || [];
             this.target = parts.find(function(x) { return x !== State.user(); }) || document.getElementById('pv-target').value.trim();
@@ -46,6 +72,7 @@ var PrivMod = {
             return;
         }
         if (mt === 'private_chat') {
+            this._recoverState(m);
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
             return;

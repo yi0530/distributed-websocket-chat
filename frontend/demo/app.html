@@ -110,6 +110,7 @@ var AppPage = {
             if (mt === 'error' && !self.appReady) {
                 setAuthStatus('登录失败：' + (m.err_msg || ''), 'top-off');
                 clearTimeout(_authTimer);
+                showAuthFailure('登录失败：' + (m.err_msg || ''));
                 return;
             }
 
@@ -163,9 +164,11 @@ var AppPage = {
                     var timeout = DemoConfig.LOGIN_TIMEOUT_MS || 8000;
                     _authTimer = setTimeout(function() {
                         setAuthStatus('自动登录响应超时', 'top-off');
+                        showAuthFailure('自动登录响应超时');
                     }, timeout);
                 } else {
                     setAuthStatus('无登录凭据', 'top-off');
+                    showAuthFailure('无登录凭据，请重新登录');
                 }
             })
             .catch(function(err) {
@@ -174,6 +177,7 @@ var AppPage = {
                 var msg = (err && err.message && err.message.indexOf('timeout') >= 0)
                     ? 'connect timeout' : 'WebSocket error';
                 U.proto(self._p, { id: 0, time: new Date().toISOString().slice(11,23), dir: 'ERROR', type: 'connect', summary: msg });
+                showAuthFailure('无法连接后端服务');
             });
     },
 
@@ -193,6 +197,17 @@ var AppPage = {
         this._renderMod();
     }
 };
+
+function showAuthFailure(msg) {
+  var area = document.getElementById('modArea');
+  if (!area) return;
+  area.innerHTML =
+    '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;color:#a0a0a8;font-size:15px">' +
+    '<p>' + msg + '</p>' +
+    '<p>当前连接未认证，聊天功能暂不可用</p>' +
+    '<button onclick="doLogout()" style="padding:10px 24px;border:1px solid #ef4444;border-radius:8px;background:transparent;color:#ef4444;cursor:pointer;font-size:14px">返回登录页</button>' +
+    '</div>';
+}
 
 function togglePanel() {
     var p = document.getElementById('sidePanel');

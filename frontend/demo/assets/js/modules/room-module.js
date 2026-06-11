@@ -34,7 +34,11 @@ var RoomMod = {
     handleMsg: function(m) {
         var mt = m.msg_type;
         if (mt === 'room_created' && m.code === 200) {
-            this.room = m.content.conversation_id;
+            var newRoom = m.content.conversation_id;
+            if (newRoom && this.room && newRoom !== this.room) {
+                this._msgs = [];
+            }
+            this.room = newRoom;
             State.room(this.room);
             var el = document.getElementById('rm-label');
             if (el) el.textContent = 'Room: ' + this.room.slice(0, 12);
@@ -42,7 +46,11 @@ var RoomMod = {
             return;
         }
         if (mt === 'room_joined' && m.code === 200) {
-            this.room = m.content.conversation_id;
+            var newRoom = m.content.conversation_id;
+            if (newRoom && this.room && newRoom !== this.room) {
+                this._msgs = [];
+            }
+            this.room = newRoom;
             State.room(this.room);
             var el = document.getElementById('rm-label');
             if (el) el.textContent = 'Room: ' + this.room.slice(0, 12);
