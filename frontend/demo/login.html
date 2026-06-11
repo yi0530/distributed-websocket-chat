@@ -1,30 +1,78 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Login — Chat Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Login — Distributed WebSocket Chat</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
 <div class="login-page">
 <div class="login-box">
-<h2>Distributed WebSocket Chat</h2>
-<label>Username</label><input id="u" placeholder="user001" autofocus>
-<label>Password</label><input id="p" type="password" placeholder="123456">
-<div class="err" id="err"></div>
-<button onclick="doRegister()">Register</button>
-<button onclick="doLogin()" style="background:#611f69;">Login</button>
-<p class="info">Test: user001 / 123456 &nbsp; user002 / 654321 &nbsp; WS: <span id="wsLabel"></span></p>
-</div></div>
+  <div class="login-logo">Distributed WebSocket Chat</div>
+  <div class="login-desc">登录或注册账号以进入演示系统</div>
+
+  <label for="u">用户名</label>
+  <input id="u" placeholder="user001" autofocus>
+
+  <label for="p">密码</label>
+  <input id="p" type="password" placeholder="123456">
+
+  <div class="err" id="err"></div>
+
+  <div class="login-btns">
+    <button id="btnLogin" class="btn-primary" onclick="doLogin()">登 录</button>
+    <button id="btnRegister" class="btn-secondary" onclick="doRegister()">注 册</button>
+  </div>
+
+  <p class="info">
+    测试账号：<code>user001 / 123456</code> &nbsp; <code>user002 / 654321</code><br>
+    WebSocket：<span id="wsLabel"></span>
+  </p>
+</div>
+</div>
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
 <script>
 var cl = null, _err = document.getElementById('err');
 document.getElementById('wsLabel').textContent = DemoConfig.WS_URL;
-function initCl() { if (cl) cl.close(); cl = new WsClient(DemoConfig.WS_URL); window.__client = cl; cl.onMsg = onMsg; cl.onLogin = onLogin; }
+
+function initCl() {
+  if (cl) cl.close();
+  cl = new WsClient(DemoConfig.WS_URL);
+  window.__client = cl;
+  cl.onMsg = onMsg;
+  cl.onLogin = onLogin;
+}
+
 function onMsg(m) {
-    if (m.msg_type === 'register' && m.code === 200) { _err.textContent = 'OK: Registered as ' + ((m.content && m.content.username) || ''); _err.style.color = '#4ade80'; }
-    if (m.msg_type === 'error') { _err.textContent = (m.code || '') + ' ' + (m.err_msg || ''); _err.style.color = '#f87171'; }
+  if (m.msg_type === 'register' && m.code === 200) {
+    _err.textContent = '注册成功：' + ((m.content && m.content.username) || '');
+    _err.style.color = '#10b981';
+  }
+  if (m.msg_type === 'error') {
+    _err.textContent = (m.code || '') + ' ' + (m.err_msg || '');
+    _err.style.color = '#ef4444';
+  }
 }
+
 function onLogin(user, token) {
-    State.user(user); State.token(token);
-    State.pwd(document.getElementById('p').value);
-    cl.close(); window.location.href = 'app.html';
+  State.user(user); State.token(token);
+  State.pwd(document.getElementById('p').value);
+  cl.close();
+  window.location.href = 'app.html';
 }
-function ensure() { if (cl && cl.connected) return Promise.resolve(); initCl(); return cl.connect(); }
-function doRegister() { var u = document.getElementById('u').value.trim(), p = document.getElementById('p').value; _err.textContent = ''; ensure().then(function() { cl.register(u, p); }); }
-function doLogin() { var u = document.getElementById('u').value.trim(), p = document.getElementById('p').value; _err.textContent = ''; ensure().then(function() { cl.login(u, p); }); }
+
+function ensure() {
+  if (cl && cl.connected) return Promise.resolve();
+  initCl();
+  return cl.connect();
+}
+
+function doRegister() {
+  var u = document.getElementById('u').value.trim();
+  var p = document.getElementById('p').value;
+  _err.textContent = '';
+  ensure().then(function() { cl.register(u, p); });
+}
+
+function doLogin() {
+  var u = document.getElementById('u').value.trim();
+  var p = document.getElementById('p').value;
+  _err.textContent = '';
+  ensure().then(function() { cl.login(u, p); });
+}
+
 initCl();
 </script></body></html>

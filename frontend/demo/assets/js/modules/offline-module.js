@@ -56,7 +56,7 @@ var OffMod = {
         nc.onLog = function(e) { U.proto(document.getElementById('protoPanel'), e); };
         nc.onState = function(s) {
             var el = document.getElementById('topConn');
-            el.textContent = s === 'connected' ? '● Connected' : '○ Disconnected';
+            el.textContent = s === 'connected' ? '● 已连接' : '○ 未连接';
             el.className = 'top-conn ' + (s === 'connected' ? 'top-ok' : 'top-off');
         };
         var oldMsg = self.cl.onMsg, oldAck = self.cl.onAck;

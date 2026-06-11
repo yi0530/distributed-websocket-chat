@@ -24,7 +24,7 @@ var U = {
         };}
         el.appendChild(r); el.scrollTop = el.scrollHeight;
     },
-    conn: function(el, ok) { el.textContent = ok ? '● Connected' : '○ Disconnected'; el.className = 'conn-status ' + (ok?'ok':'off'); },
+    conn: function(el, ok) { el.textContent = ok ? '● 已连接' : '○ 未连接'; el.className = 'top-conn ' + (ok?'top-ok':'top-off'); },
     badge: function(el, u) { el.textContent = u || 'Not logged in'; },
     tok: function(el, t) { el.textContent = t ? 'Token: ' + t.slice(0,16) + '...' : 'No token'; },
     clear: function(el) { el.innerHTML = ''; },

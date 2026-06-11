@@ -1,16 +1,58 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Demo — WebSocket Chat</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Distributed WebSocket Chat — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
 <div class="idx-page">
 <div class="idx-box">
-<h1>Distributed WebSocket Chat</h1>
-<p>手写RFC6455 | JWT | Redis | 1000并发压测</p>
-<div class="ws-row"><input id="wsUrl" placeholder="ws://127.0.0.1:8768"></div>
-<div class="btn-row">
-<button onclick="go('login.html')">Login / Register</button>
-<button onclick="go('app.html')" class="purple">Enter App</button>
+  <div class="idx-icon">&#9883;</div>
+  <h1>Distributed WebSocket Chat</h1>
+  <p class="idx-subtitle">计算机网络课程项目 — 分布式实时聊天系统演示</p>
+
+  <div class="idx-pills">
+    <span>手写 RFC6455</span><span>JWT 认证</span><span>Redis Pub/Sub</span><span>ACK 机制</span><span>离线消息</span><span>1000 并发</span>
+  </div>
+
+  <div class="ws-row">
+    <input id="wsUrl" placeholder="ws://127.0.0.1:8768">
+  </div>
+
+  <div class="btn-row">
+    <button class="btn-primary" onclick="go('app.html')">进入演示系统</button>
+    <button class="btn-secondary" onclick="goSecondWindow()">打开第二客户端窗口</button>
+  </div>
+
+  <div class="idx-cards">
+    <div class="idx-card">
+      <div class="card-icon">&#9889;</div>
+      <h3>WebSocket 实时通信</h3>
+      <p>手写 RFC6455 帧解析，支持文本帧、Ping/Pong、Close 帧</p>
+    </div>
+    <div class="idx-card">
+      <div class="card-icon">&#128274;</div>
+      <h3>JWT 登录认证</h3>
+      <p>登录获取 JWT Token，连接身份绑定，未认证消息拦截</p>
+    </div>
+    <div class="idx-card">
+      <div class="card-icon">&#128268;</div>
+      <h3>分布式消息路由</h3>
+      <p>Redis Pub/Sub 跨节点转发，多节点部署，消息可靠投递</p>
+    </div>
+    <div class="idx-card">
+      <div class="card-icon">&#128202;</div>
+      <h3>压测与可观测性</h3>
+      <p>WebSocket 1000 并发 vs Long Polling 对比，协议面板实时监控</p>
+    </div>
+  </div>
 </div>
-</div></div>
+</div>
 <script src="assets/js/config.js"></script>
 <script>
 document.getElementById('wsUrl').value = DemoConfig.WS_URL;
-function go(url) { var w = document.getElementById('wsUrl').value; DemoConfig.setWsUrl(w); window.location.href = url + '?ws=' + encodeURIComponent(w); }
+function go(url) {
+  var w = document.getElementById('wsUrl').value;
+  DemoConfig.setWsUrl(w);
+  window.location.href = url + '?ws=' + encodeURIComponent(w);
+}
+function goSecondWindow() {
+  var w = document.getElementById('wsUrl').value;
+  DemoConfig.setWsUrl(w);
+  window.open('index.html?ws=' + encodeURIComponent(w), '_blank');
+}
 </script></body></html>

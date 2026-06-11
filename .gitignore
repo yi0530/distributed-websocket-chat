@@ -20,6 +20,9 @@ Thumbs.db
 # User data
 data/
 
+# Claude Code skills (local dev tools)
+.claude/skills/
+
 # IDE
 .vscode/
 .idea/

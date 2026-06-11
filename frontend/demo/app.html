@@ -1,28 +1,55 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>Chat App — Demo</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chat App — Distributed WebSocket Chat</title><link rel="stylesheet" href="assets/css/demo.css"></head><body>
 <div class="app">
+
+<!-- Left Sidebar -->
 <nav class="app-nav">
-    <div class="nav-header">Chat Demo</div>
-    <div class="nav-item active" data-mod="room" onclick="AppPage.switchMod('room')"># 群聊</div>
-    <div class="nav-item" data-mod="private" onclick="AppPage.switchMod('private')">@ 私聊</div>
-    <div class="nav-item" data-mod="offline" onclick="AppPage.switchMod('offline')">↻ 离线消息</div>
-    <div class="nav-item" data-mod="stress" onclick="AppPage.switchMod('stress')">&#9776; 压测结果</div>
-    <div style="flex:1"></div>
-    <div class="nav-item" style="color:#60a5fa;font-size:11px;text-align:center;" onclick="openSecondWindow()">+ 打开第二窗口</div>
+  <div class="nav-header">Chat Demo</div>
+  <div class="nav-section">功能模块</div>
+  <div class="nav-item active" data-mod="room" onclick="AppPage.switchMod('room')">
+    <span>#</span> 群聊
+  </div>
+  <div class="nav-item" data-mod="private" onclick="AppPage.switchMod('private')">
+    <span>@</span> 私聊
+  </div>
+  <div class="nav-item" data-mod="offline" onclick="AppPage.switchMod('offline')">
+    <span>&#8635;</span> 离线消息
+  </div>
+  <div class="nav-item" data-mod="stress" onclick="AppPage.switchMod('stress')">
+    <span>&#9776;</span> 压测结果
+  </div>
+
+  <div class="nav-spacer"></div>
+
+  <div class="nav-bottom">
+    <button onclick="openSecondWindow()">+ 打开第二窗口</button>
+  </div>
 </nav>
+
+<!-- Main Body -->
 <div class="app-body">
-    <div class="app-top">
-        <span class="top-user" id="topUser">-</span>
-        <span class="top-conn top-off" id="topConn">○</span>
-        <span class="top-token" id="topToken"></span>
-        <button onclick="doLogout()">退出登录</button>
-    </div>
-    <div id="modArea" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>
+  <div class="app-top">
+    <span class="top-user" id="topUser">-</span>
+    <span class="top-conn top-off" id="topConn">○ 未连接</span>
+    <span class="top-token" id="topToken"></span>
+    <span class="top-actions">
+      <button onclick="togglePanel()" title="切换协议面板">协议面板</button>
+      <button class="danger" onclick="doLogout()">退出登录</button>
+    </span>
+  </div>
+  <div id="modArea"></div>
 </div>
+
+<!-- Right Protocol Panel -->
 <div class="app-panel" id="sidePanel">
-    <div class="panel-head">Protocol <button onclick="togglePanel()">×</button></div>
-    <div class="panel-body" id="protoPanel"></div>
+  <div class="panel-head">
+    <span>Protocol</span>
+    <button onclick="togglePanel()" title="折叠面板">&times;</button>
+  </div>
+  <div class="panel-body" id="protoPanel"></div>
 </div>
+
 </div>
+
 <script src="assets/js/config.js"></script><script src="assets/js/protocol.js"></script><script src="assets/js/state.js"></script><script src="assets/js/ws-client.js"></script><script src="assets/js/ui.js"></script>
 <script src="assets/js/modules/room-module.js"></script>
 <script src="assets/js/modules/private-module.js"></script>
@@ -50,8 +77,13 @@ var AppPage = {
         this.cl.onLog = function(e) { U.proto(self._p, e); };
         this.cl.onState = function(s) {
             var el = document.getElementById('topConn');
-            el.textContent = s === 'connected' ? '● Connected' : '○ Disconnected';
-            el.className = 'top-conn ' + (s === 'connected' ? 'top-ok' : 'top-off');
+            if (s === 'connected') {
+                el.textContent = '● 已连接';
+                el.className = 'top-conn top-ok';
+            } else {
+                el.textContent = '○ 未连接';
+                el.className = 'top-conn top-off';
+            }
         };
         this.cl.onLogin = function(user, token) {
             if (!State.user()) { State.user(user); State.token(token); }
@@ -80,13 +112,16 @@ function togglePanel() {
     var p = document.getElementById('sidePanel');
     p.classList.toggle('collapsed');
 }
+
 function openSecondWindow() {
     window.open('index.html?ws=' + encodeURIComponent(DemoConfig.WS_URL), '_blank');
 }
+
 function doLogout() {
     State.logout();
     if (AppPage.cl) AppPage.cl.close();
     window.location.href = 'login.html';
 }
+
 AppPage.init();
 </script></body></html>

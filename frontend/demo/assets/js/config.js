@@ -21,7 +21,7 @@ function getWsUrl() {
         var saved = sessionStorage.getItem('demo_ws_url');
         if (saved) return saved;
     } catch(e) {}
-    return 'ws://127.0.0.1:8768';
+    return 'ws://127.0.0.1:8765';
 }
 
 function setWsUrl(url) {
