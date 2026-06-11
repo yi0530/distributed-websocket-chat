@@ -3,6 +3,7 @@ function WsClient(url) {
     this.url = url || DemoConfig.WS_URL;
     this.ws = null;
     this.connected = false;
+    this._closed = false;
     this._ack = {};
     this._eid = 0;
     this.onLog = null;
@@ -65,6 +66,8 @@ WsClient.prototype.connect = function() {
     });
 };
 WsClient.prototype.close = function() {
+    if (this._closed) return;
+    this._closed = true;
     if (this.ws) { try { this.ws.close(1000); } catch(e) {} this.ws = null; }
     this.connected = false; this._ack = {}; this._fireState('disconnected');
 };

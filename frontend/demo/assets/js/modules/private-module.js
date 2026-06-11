@@ -1,4 +1,4 @@
-// Private chat module — messages cached, state recovered from delivered messages
+// Private chat module — messages cached, state recovered, CID-isolated
 var PrivMod = {
     cl: null, cid: null, target: null, _msgs: [],
 
@@ -57,21 +57,25 @@ var PrivMod = {
         var mt = m.msg_type;
         if (mt === 'private_conversation_created' && m.code === 200) {
             var newCid = m.content.conversation_id;
-            // Clear cache if switching to a new conversation
             if (newCid && this.cid && newCid !== this.cid) {
                 this._msgs = [];
             }
             this.cid = newCid;
             State.privConv(this.cid);
+            // Derive target from participants — safe when pv-target DOM absent
             var parts = (m.content && m.content.participants) || [];
-            this.target = parts.find(function(x) { return x !== State.user(); }) || document.getElementById('pv-target').value.trim();
+            var fromMsg = parts.find(function(x) { return x !== State.user(); });
+            var elT = document.getElementById('pv-target');
+            this.target = fromMsg || (elT ? elT.value.trim() : State.target()) || '';
             State.target(this.target);
-            var el = document.getElementById('pv-label');
-            if (el) el.textContent = '与 ' + this.target + ' 聊天中';
+            var elL = document.getElementById('pv-label');
+            if (elL && this.target) elL.textContent = '与 ' + this.target + ' 聊天中';
             this._pushSys('已建立与 ' + this.target + ' 的私聊');
             return;
         }
         if (mt === 'private_chat') {
+            // CID isolation: skip if we have a cid and this message is for a different conversation
+            if (this.cid && m.conversation_id && m.conversation_id !== this.cid) return;
             this._recoverState(m);
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
@@ -103,12 +107,13 @@ var PrivMod = {
 
     startChat: function() {
         if (!AppPage.appReady) { U.sys(document.getElementById('pv-msgs'), '后端认证未完成，暂不能操作'); return; }
-        var t = document.getElementById('pv-target').value.trim();
+        var elT = document.getElementById('pv-target');
+        var t = (elT ? elT.value.trim() : this.target) || '';
         if (t) this.cl.createPrivConv(t);
     },
     send: function() {
         if (!AppPage.appReady) { U.sys(document.getElementById('pv-msgs'), '后端认证未完成，暂不能操作'); return; }
-        if (!this.cid) return;
+        if (!this.cid) { U.sys(document.getElementById('pv-msgs'), '请先发起私聊会话'); return; }
         var t = document.getElementById('pv-input').value.trim();
         if (!t) return;
         this.cl.sendPrivMsg(this.cid, t, true);

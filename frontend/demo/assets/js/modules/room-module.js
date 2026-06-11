@@ -1,11 +1,10 @@
-// Room chat module — messages cached and routed by msg_type
+// Room chat module — messages cached, room-ID-isolated
 var RoomMod = {
     cl: null, room: null, _msgs: [],
 
     render: function(area, client) {
         this.cl = client;
         this.room = State.room();
-        var self = this;
         area.innerHTML =
             '<div class="toolbar">' +
             '<input id="rm-room-name" placeholder="房间名称" style="width:120px">' +
@@ -17,7 +16,6 @@ var RoomMod = {
             '<div class="chat-msgs" id="rm-msgs"></div>' +
             '<div class="chat-input"><input id="rm-input" placeholder="输入消息..." onkeydown="if(event.key===\'Enter\')RoomMod.send()"><button id="rm-btn-send" onclick="RoomMod.send()">发送</button></div>';
 
-        // Disable buttons if not ready
         if (!AppPage.appReady) {
             var bc = document.getElementById('rm-btn-create'); if (bc) bc.disabled = true;
             var bj = document.getElementById('rm-btn-join'); if (bj) bj.disabled = true;
@@ -25,7 +23,6 @@ var RoomMod = {
             U.sys(document.getElementById('rm-msgs'), '后端认证未完成，暂不能操作');
         }
 
-        // Replay cached messages
         for (var i = 0; i < this._msgs.length; i++) {
             this._renderMsg(this._msgs[i]);
         }
@@ -58,6 +55,8 @@ var RoomMod = {
             return;
         }
         if (mt === 'room_chat') {
+            // CID isolation: only display if it matches current room
+            if (this.room && m.conversation_id && m.conversation_id !== this.room) return;
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
             return;
@@ -98,7 +97,7 @@ var RoomMod = {
     },
     send: function() {
         if (!AppPage.appReady) { U.sys(document.getElementById('rm-msgs'), '后端认证未完成，暂不能操作'); return; }
-        if (!this.room) return;
+        if (!this.room) { U.sys(document.getElementById('rm-msgs'), '请先创建或加入房间'); return; }
         var t = document.getElementById('rm-input').value.trim();
         if (!t) return;
         this.cl.sendRoomMsg(this.room, t, true);
