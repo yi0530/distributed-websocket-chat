@@ -126,10 +126,17 @@ var AppPage = {
                 return;
             }
 
-            // Error while authenticated — show in current module
+            // Error while authenticated — route by msg_id prefix
             if (mt === 'error' && self.appReady) {
-                if (self.mod === 'room' && RoomMod.handleMsg) RoomMod.handleMsg(m);
-                else if (self.mod === 'private' && PrivMod.handleMsg) PrivMod.handleMsg(m);
+                var mid = m.msg_id || '';
+                if (mid.indexOf('cr-') === 0 || mid.indexOf('join-') === 0 || mid.indexOf('chat-') === 0) {
+                    if (RoomMod.handleMsg) RoomMod.handleMsg(m);
+                } else if (mid.indexOf('cpc-') === 0 || mid.indexOf('priv-') === 0) {
+                    if (PrivMod.handleMsg) PrivMod.handleMsg(m);
+                } else {
+                    // Unknown origin — show in both as system message
+                    if (RoomMod.handleMsg) RoomMod.handleMsg(m);
+                }
                 return;
             }
         };

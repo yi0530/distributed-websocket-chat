@@ -8,7 +8,6 @@ from backend.core.conversation_service import (
 )
 from backend.core.dedupe_service import has_processed_message, mark_message_processed
 from backend.core.local_delivery_service import deliver_private_message_locally
-from backend.core.online_registry_service import get_user_online_node
 from backend.core.protocol import build_message, send_ack, send_error, send_json
 from backend.core.pubsub_service import publish_distributed_message
 from backend.core.state import connections
@@ -30,15 +29,6 @@ async def handle_create_private_conversation(websocket, proto: dict):
 
     if target_user_id == ctx.user_id:
         await send_error(websocket, "不能和自己创建私聊会话", msg_id=msg_id, code=400)
-        return
-
-    try:
-        online_node = await asyncio.to_thread(get_user_online_node, target_user_id)
-    except Exception:
-        logger.exception("查询目标用户在线状态失败，继续创建私聊：target=%s", target_user_id)
-        online_node = True  # Redis 异常时放行，不阻断
-    if not online_node:
-        await send_error(websocket, "目标用户当前不在线，暂时无法创建私聊会话", msg_id=msg_id, code=404)
         return
 
     try:
