@@ -13,6 +13,8 @@
   </div>
   <div class="nav-spacer"></div>
 
+  <div id="sidebarRooms" style="flex:1;overflow-y:auto;padding:8px 8px;font-size:13px"></div>
+
   <div class="nav-bottom">
     <button onclick="openSecondWindow()">+ 打开第二窗口</button>
   </div>
@@ -117,12 +119,14 @@ var AppPage = {
             // Room messages — always route to RoomMod
             if (mt === 'room_created' || mt === 'room_joined' || mt === 'room_chat' || mt === 'room_members' || mt === 'leave_room' || mt === 'room_list') {
                 if (RoomMod.handleMsg) RoomMod.handleMsg(m);
+                if (mt === 'room_list') self.renderSidebar();
                 return;
             }
 
             // Private messages — always route to PrivMod
             if (mt === 'private_conversation_created' || mt === 'private_chat' || mt === 'my_conversations') {
                 if (PrivMod.handleMsg) PrivMod.handleMsg(m);
+                if (mt === 'my_conversations') self.renderSidebar();
                 return;
             }
 
@@ -194,6 +198,14 @@ var AppPage = {
         area.innerHTML = '';
         if (this.mod === 'room') RoomMod.render(area, this.cl);
         else if (this.mod === 'private') PrivMod.render(area, this.cl);
+        this.renderSidebar();
+    },
+
+    renderSidebar: function() {
+        var el = document.getElementById('sidebarRooms');
+        if (!el) return;
+        if (this.mod === 'room' && RoomMod.renderList) RoomMod.renderList(el);
+        else if (this.mod === 'private' && PrivMod.renderList) PrivMod.renderList(el);
     },
 
     switchMod: function(m) {

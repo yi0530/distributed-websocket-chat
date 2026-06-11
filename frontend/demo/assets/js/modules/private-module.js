@@ -36,20 +36,16 @@ var PrivMod = {
             '<button id="pv-btn-start" onclick="PrivMod.startChat()">发起私聊</button>' +
             '<span class="hint" id="pv-label">' + (this.target ? '与 ' + this.target + ' 聊天中' : '') + '</span>' +
             '</div>' +
-            '<div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);flex-shrink:0">' +
-            '历史私聊 <button id="pv-btn-refresh" onclick="PrivMod.refreshList()" style="padding:4px 10px;border:1px solid var(--border-light);border-radius:4px;background:var(--bg-surface);color:var(--text-secondary);cursor:pointer;font-size:11px">刷新</button>' +
-            '</div>' +
-            '<div id="pv-list" style="max-height:120px;overflow-y:auto;flex-shrink:0;font-size:13px"></div>' +
-            '<div class="chat-msgs" id="pv-msgs" style="border-top:1px solid var(--border)"></div>' +
+            '<div class="chat-msgs" id="pv-msgs"></div>' +
             '<div class="chat-input"><input id="pv-input" placeholder="输入私聊消息..." onkeydown="if(event.key===\'Enter\')PrivMod.send()"><button id="pv-btn-send" onclick="PrivMod.send()">发送</button></div>';
 
-        this._renderConvList();
         U.sys(document.getElementById('pv-msgs'), '提示：离线消息测试请先在线建立会话，再关闭对方窗口继续发送');
+
+        this._loadMsgs();
 
         if (!AppPage.appReady) {
             var b1 = document.getElementById('pv-btn-start'); if (b1) b1.disabled = true;
             var b2 = document.getElementById('pv-btn-send'); if (b2) b2.disabled = true;
-            var br = document.getElementById('pv-btn-refresh'); if (br) br.disabled = true;
             U.sys(document.getElementById('pv-msgs'), '后端认证未完成，暂不能操作');
         }
 
@@ -60,39 +56,50 @@ var PrivMod = {
         if (AppPage.appReady && this.cl) this.cl.listMyConversations();
     },
 
-    _renderConvList: function() {
-        var el = document.getElementById('pv-list');
-        if (!el) return;
+    renderList: function(el) {
+        var html = '<div style="padding:6px 8px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">历史私聊</div>';
         var privConvs = [];
         for (var i = 0; i < this._convs.length; i++) {
             if (this._convs[i].type === 'private') privConvs.push(this._convs[i]);
         }
         if (privConvs.length === 0) {
-            el.innerHTML = '<div style="padding:8px 16px;color:var(--text-tertiary);font-size:12px">暂无历史私聊</div>';
-            return;
+            html += '<div style="padding:8px;color:#6b7280;font-size:12px">暂无历史私聊</div>';
+        } else {
+            for (var i = 0; i < privConvs.length; i++) {
+                var c = privConvs[i];
+                var peer = c.peer || 'unknown';
+                var isCurrent = (this.cid === c.conversation_id);
+                html += '<div style="padding:8px;margin:2px 0;border-radius:6px;cursor:pointer;' +
+                    (isCurrent ? 'background:rgba(37,99,235,0.12);color:#2563eb;' : 'color:var(--text);') + '"' +
+                    (isCurrent ? '' : ' onclick="PrivMod.enterChat(\'' + c.conversation_id + '\',\'' + U.esc(peer) + '\')"') + '>' +
+                    '<div style="font-weight:600;font-size:13px">' + U.esc(peer) + '</div>' +
+                    (isCurrent ? '<div style="font-size:11px;color:var(--muted)">当前聊天</div>' : '<div style="font-size:11px;color:var(--muted)">点击进入聊天</div>') +
+                    '</div>';
+            }
         }
-        var html = '';
-        for (var i = 0; i < privConvs.length; i++) {
-            var c = privConvs[i];
-            var peer = c.peer || 'unknown';
-            html += '<div style="padding:6px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.03)">' +
-                '<span style="flex:1;color:var(--text)">' + U.esc(peer) + '</span>' +
-                '<button onclick="PrivMod.enterChat(\'' + c.conversation_id + '\',\'' + U.esc(peer) + '\')" style="padding:3px 10px;border:1px solid var(--border-light);border-radius:4px;background:var(--bg-surface);color:var(--accent);cursor:pointer;font-size:11px">进入聊天</button>' +
-                '</div>';
-        }
+        html += '<button onclick="PrivMod.refreshList()" style="margin-top:8px;padding:4px;width:100%;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;font-size:11px">刷新</button>';
         el.innerHTML = html;
     },
 
     enterChat: function(cid, peer) {
+        if (this.cid !== cid) {
+            this._msgs = [];
+            var elM = document.getElementById('pv-msgs'); if (elM) elM.innerHTML = '';
+        }
         this.cid = cid;
         State.privConv(cid);
         this.target = peer;
         State.target(peer);
+        this._loadMsgs();
         var elT = document.getElementById('pv-target');
         if (elT) elT.value = peer;
         var elL = document.getElementById('pv-label');
         if (elL) elL.textContent = '与 ' + peer + ' 聊天中';
+        for (var i = 0; i < this._msgs.length; i++) {
+            this._renderMsg(this._msgs[i]);
+        }
         this._pushSys('已进入与 ' + peer + ' 的私聊');
+        if (AppPage && AppPage.renderSidebar) AppPage.renderSidebar();
     },
 
     refreshList: function() {
@@ -104,13 +111,13 @@ var PrivMod = {
         var mt = m.msg_type;
         if (mt === 'my_conversations' && m.code === 200) {
             this._convs = (m.content && m.content.conversations) || [];
-            this._renderConvList();
             return;
         }
         if (mt === 'private_conversation_created' && m.code === 200) {
             var newCid = m.content.conversation_id;
-            if (newCid && this.cid && newCid !== this.cid) {
+            if (newCid && this.cid !== newCid) {
                 this._msgs = [];
+                var elM = document.getElementById('pv-msgs'); if (elM) elM.innerHTML = '';
             }
             this.cid = newCid;
             State.privConv(this.cid);
@@ -119,6 +126,10 @@ var PrivMod = {
             var elT = document.getElementById('pv-target');
             this.target = fromMsg || (elT ? elT.value.trim() : State.target()) || '';
             State.target(this.target);
+            this._loadMsgs();
+            for (var i2 = 0; i2 < this._msgs.length; i2++) {
+                this._renderMsg(this._msgs[i2]);
+            }
             var elL = document.getElementById('pv-label');
             if (elL && this.target) elL.textContent = '与 ' + this.target + ' 聊天中';
             this._pushSys('已建立与 ' + this.target + ' 的私聊');
@@ -130,6 +141,7 @@ var PrivMod = {
             this._recoverState(m);
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
+            this._saveMsgs();
             return;
         }
         if (mt === 'error') {
@@ -145,6 +157,21 @@ var PrivMod = {
     _pushSys: function(text) {
         this._msgs.push({ type: 'sys', text: text });
         U.sys(document.getElementById('pv-msgs'), text);
+        this._saveMsgs();
+    },
+
+    _saveMsgs: function() {
+        if (!this.cid) return;
+        try { sessionStorage.setItem('demo_msgs_priv_' + this.cid, JSON.stringify(this._msgs.slice(-100))); } catch(e) {}
+    },
+
+    _loadMsgs: function() {
+        if (!this.cid) return;
+        if (this._msgs.length > 0) return;
+        try {
+            var raw = sessionStorage.getItem('demo_msgs_priv_' + this.cid);
+            if (raw) this._msgs = JSON.parse(raw);
+        } catch(e) { this._msgs = []; }
     },
 
     _renderMsg: function(entry) {

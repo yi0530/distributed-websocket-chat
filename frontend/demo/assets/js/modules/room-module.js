@@ -12,21 +12,17 @@ var RoomMod = {
             '<button id="rm-btn-create" onclick="RoomMod.create()">创建</button>' +
             '<input id="rm-room-id" placeholder="房间 ID" style="width:180px">' +
             '<button id="rm-btn-join" onclick="RoomMod.join()">加入</button>' +
+            '<span class="room-id" id="rm-label">' + (this.room ? 'Room: ' + this.room.slice(0, 12) : '') + '</span>' +
             '</div>' +
-            '<div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);flex-shrink:0">' +
-            '已有群聊 <button id="rm-btn-refresh" onclick="RoomMod.refreshList()" style="padding:4px 10px;border:1px solid var(--border-light);border-radius:4px;background:var(--bg-surface);color:var(--text-secondary);cursor:pointer;font-size:11px">刷新</button>' +
-            '</div>' +
-            '<div id="rm-list" style="max-height:150px;overflow-y:auto;flex-shrink:0;font-size:13px"></div>' +
-            '<div class="chat-msgs" id="rm-msgs" style="border-top:1px solid var(--border)"></div>' +
+            '<div class="chat-msgs" id="rm-msgs"></div>' +
             '<div class="chat-input"><input id="rm-input" placeholder="输入消息..." onkeydown="if(event.key===\'Enter\')RoomMod.send()"><button id="rm-btn-send" onclick="RoomMod.send()">发送</button></div>';
 
-        this._renderRoomList();
+        this._loadMsgs();
 
         if (!AppPage.appReady) {
             var bc = document.getElementById('rm-btn-create'); if (bc) bc.disabled = true;
             var bj = document.getElementById('rm-btn-join'); if (bj) bj.disabled = true;
             var bs = document.getElementById('rm-btn-send'); if (bs) bs.disabled = true;
-            var br = document.getElementById('rm-btn-refresh'); if (br) br.disabled = true;
             U.sys(document.getElementById('rm-msgs'), '后端认证未完成，暂不能操作');
         }
 
@@ -38,22 +34,24 @@ var RoomMod = {
         if (AppPage.appReady && this.cl) this.cl.listRooms();
     },
 
-    _renderRoomList: function() {
-        var el = document.getElementById('rm-list');
-        if (!el) return;
+    renderList: function(el) {
+        var html = '<div style="padding:6px 8px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.5px">群聊房间</div>';
         if (this._rooms.length === 0) {
-            el.innerHTML = '<div style="padding:8px 16px;color:var(--text-tertiary);font-size:12px">暂无群聊，创建一个吧</div>';
-            return;
+            html += '<div style="padding:8px;color:#6b7280;font-size:12px">暂无群聊</div>';
+        } else {
+            for (var i = 0; i < this._rooms.length; i++) {
+                var r = this._rooms[i];
+                var isJoined = (this.room === r.conversation_id);
+                html += '<div style="padding:8px;margin:2px 0;border-radius:6px;cursor:pointer;' +
+                    (isJoined ? 'background:rgba(37,99,235,0.12);color:#2563eb;' : 'color:var(--text);') + '"' +
+                    (isJoined ? '' : ' onclick="RoomMod.joinById(\'' + r.conversation_id + '\')"') + '>' +
+                    '<div style="font-weight:600;font-size:13px">' + U.esc(r.name || r.conversation_id.slice(0,8)) + '</div>' +
+                    '<div style="font-size:11px;color:var(--muted)">' + (r.participant_count || 0) + '人' +
+                    (isJoined ? ' · 已加入' : ' · 点击加入') + '</div>' +
+                    '</div>';
+            }
         }
-        var html = '';
-        for (var i = 0; i < this._rooms.length; i++) {
-            var r = this._rooms[i];
-            html += '<div style="padding:6px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.03)">' +
-                '<span style="flex:1;color:var(--text)">' + U.esc(r.name || r.conversation_id) + '</span>' +
-                '<span style="color:var(--text-tertiary);font-size:11px">' + (r.participant_count || 0) + '人</span>' +
-                '<button onclick="RoomMod.joinById(\'' + r.conversation_id + '\')" style="padding:3px 10px;border:1px solid var(--border-light);border-radius:4px;background:var(--bg-surface);color:var(--accent);cursor:pointer;font-size:11px">加入</button>' +
-                '</div>';
-        }
+        html += '<button onclick="RoomMod.refreshList()" style="margin-top:8px;padding:4px;width:100%;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;font-size:11px">刷新</button>';
         el.innerHTML = html;
     },
 
@@ -73,28 +71,34 @@ var RoomMod = {
         var mt = m.msg_type;
         if (mt === 'room_list' && m.code === 200) {
             this._rooms = (m.content && m.content.rooms) || [];
-            this._renderRoomList();
             return;
         }
         if (mt === 'room_created' && m.code === 200) {
             var newRoom = m.content.conversation_id;
-            if (newRoom && this.room && newRoom !== this.room) {
+            if (newRoom && this.room !== newRoom) {
                 this._msgs = [];
+                var el = document.getElementById('rm-msgs'); if (el) el.innerHTML = '';
             }
             this.room = newRoom;
             State.room(this.room);
+            var lbl = document.getElementById('rm-label');
+            if (lbl) lbl.textContent = 'Room: ' + this.room.slice(0, 12);
+            this._loadMsgs();
             U.sys(document.getElementById('rm-msgs'), '房间已创建: ' + this.room);
-            // Refresh room list
             if (this.cl) this.cl.listRooms();
             return;
         }
         if (mt === 'room_joined' && m.code === 200) {
-            var newRoom = m.content.conversation_id;
-            if (newRoom && this.room && newRoom !== this.room) {
+            var newRoom2 = m.content.conversation_id;
+            if (newRoom2 && this.room !== newRoom2) {
                 this._msgs = [];
+                var el2 = document.getElementById('rm-msgs'); if (el2) el2.innerHTML = '';
             }
-            this.room = newRoom;
+            this.room = newRoom2;
             State.room(this.room);
+            var lbl = document.getElementById('rm-label');
+            if (lbl) lbl.textContent = 'Room: ' + this.room.slice(0, 12);
+            this._loadMsgs();
             U.sys(document.getElementById('rm-msgs'), '已加入: ' + this.room);
             if (this.cl) this.cl.listRooms();
             return;
@@ -103,6 +107,7 @@ var RoomMod = {
             if (this.room && m.conversation_id && m.conversation_id !== this.room) return;
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
+            this._saveMsgs();
             return;
         }
         if (mt === 'error') {
@@ -118,6 +123,21 @@ var RoomMod = {
     _pushSys: function(text) {
         this._msgs.push({ type: 'sys', text: text });
         U.sys(document.getElementById('rm-msgs'), text);
+        this._saveMsgs();
+    },
+
+    _saveMsgs: function() {
+        if (!this.room) return;
+        try { sessionStorage.setItem('demo_msgs_room_' + this.room, JSON.stringify(this._msgs.slice(-100))); } catch(e) {}
+    },
+
+    _loadMsgs: function() {
+        if (!this.room) return;
+        if (this._msgs.length > 0) return;
+        try {
+            var raw = sessionStorage.getItem('demo_msgs_room_' + this.room);
+            if (raw) this._msgs = JSON.parse(raw);
+        } catch(e) { this._msgs = []; }
     },
 
     _renderMsg: function(entry) {
