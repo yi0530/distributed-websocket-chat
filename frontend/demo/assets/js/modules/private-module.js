@@ -143,7 +143,7 @@ var PrivMod = {
             this._recoverState(m);
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
-            this._saveMsgs();
+            this._saveMsgs(m.content && m.content.conversation_id);
             return;
         }
         if (mt === 'error') {
@@ -162,9 +162,10 @@ var PrivMod = {
         this._saveMsgs();
     },
 
-    _saveMsgs: function() {
-        if (!this.cid) return;
-        try { sessionStorage.setItem('demo_msgs_priv_' + this.cid, JSON.stringify(this._msgs.slice(-100))); } catch(e) {}
+    _saveMsgs: function(fallbackKey) {
+        var key = this.cid || fallbackKey;
+        if (!key) return;
+        try { sessionStorage.setItem('demo_msgs_priv_' + key, JSON.stringify(this._msgs.slice(-100))); } catch(e) {}
     },
 
     _loadMsgs: function() {
@@ -172,7 +173,14 @@ var PrivMod = {
         if (this._msgs.length > 0) return;
         try {
             var raw = sessionStorage.getItem('demo_msgs_priv_' + this.cid);
-            if (raw) this._msgs = JSON.parse(raw);
+            if (raw) {
+                this._msgs = JSON.parse(raw);
+                var el = document.getElementById('pv-msgs');
+                if (el) el.innerHTML = '';
+                for (var i = 0; i < this._msgs.length; i++) {
+                    this._renderMsg(this._msgs[i]);
+                }
+            }
         } catch(e) { this._msgs = []; }
     },
 
