@@ -337,6 +337,18 @@ async def handle_read_receipt(websocket, proto: dict):
         await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
         return
 
+    try:
+        conv = await asyncio.to_thread(get_conversation, conversation_id)
+    except ValueError:
+        await send_error(websocket, "会话不存在", msg_id=msg_id, code=404)
+        return
+    if conv.get("type") != "private":
+        await send_error(websocket, "已读回执仅支持私聊会话", msg_id=msg_id, code=400)
+        return
+    if ctx.user_id not in conv.get("participants", set()):
+        await send_error(websocket, "你不在该会话中", msg_id=msg_id, code=403)
+        return
+
     receipt = build_message(
         "read_receipt",
         msg_id=msg_id,
@@ -359,6 +371,18 @@ async def handle_typing_start(websocket, proto: dict):
         await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
         return
 
+    try:
+        conv = await asyncio.to_thread(get_conversation, conversation_id)
+    except ValueError:
+        await send_error(websocket, "会话不存在", msg_id=msg_id, code=404)
+        return
+    if conv.get("type") != "private":
+        await send_error(websocket, "输入状态仅支持私聊会话", msg_id=msg_id, code=400)
+        return
+    if ctx.user_id not in conv.get("participants", set()):
+        await send_error(websocket, "你不在该会话中", msg_id=msg_id, code=403)
+        return
+
     notify = build_message(
         "user_typing",
         msg_id=msg_id,
@@ -379,6 +403,18 @@ async def handle_typing_stop(websocket, proto: dict):
 
     if not ctx.is_authenticated or not ctx.user_id:
         await send_error(websocket, "当前连接未认证", msg_id=msg_id, code=401)
+        return
+
+    try:
+        conv = await asyncio.to_thread(get_conversation, conversation_id)
+    except ValueError:
+        await send_error(websocket, "会话不存在", msg_id=msg_id, code=404)
+        return
+    if conv.get("type") != "private":
+        await send_error(websocket, "输入状态仅支持私聊会话", msg_id=msg_id, code=400)
+        return
+    if ctx.user_id not in conv.get("participants", set()):
+        await send_error(websocket, "你不在该会话中", msg_id=msg_id, code=403)
         return
 
     notify = build_message(

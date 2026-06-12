@@ -4,6 +4,7 @@ var U = {
     msg: function(el, content, own, extra) {
         if (!el) return;
         var d = document.createElement('div'); d.className = 'msg ' + (own ? 'msg-own' : 'msg-other');
+        if (extra && extra.mid) d.id = 'msg-' + extra.mid;
         var from = content.from_user_id || content.from || '';
         var txt = content.text || '';
         var html = '<span class="msg-sender">' + U.esc(from) + '</span><div class="msg-text">' + U.esc(txt) + '</div>';

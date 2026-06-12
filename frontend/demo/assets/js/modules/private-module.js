@@ -1,6 +1,6 @@
 // Private chat module — messages cached, state recovered, CID-isolated, conversation list
 var PrivMod = {
-    cl: null, cid: null, target: null, _msgs: [], _convs: [], _typingUsers: {}, _typingTimer: null,
+    cl: null, cid: null, target: null, _msgs: [], _convs: [], _typingUsers: {}, _typingTimer: null, _typingSent: false, _readByPeer: {},
 
     _recoverState: function(m) {
         var msgCid = m.content && m.content.conversation_id;
@@ -38,8 +38,8 @@ var PrivMod = {
             '<span class="hint" id="pv-label">' + (this.target ? '与 ' + this.target + ' 聊天中' : '') + '</span>' +
             '</div>' +
             '<div class="chat-msgs" id="pv-msgs"></div>' +
-            '<div id="pv-typing" style="height:20px;padding:0 16px;font-size:12px;color:#6b7280;font-style:italic"></div>' +
-            '<div class="chat-input"><input id="pv-input" placeholder="输入私聊消息..." onkeydown="if(event.key===\'Enter\')PrivMod.send()" oninput="PrivMod._onTyping()"><button id="pv-btn-send" onclick="PrivMod.send()">发送</button></div>';
+            '<div id="pv-typing" style="height:22px;padding:0 16px;font-size:13px;color:#2563eb;font-weight:500"></div>' +
+            '<div class="chat-input"><input id="pv-input" placeholder="输入私聊消息..." onkeydown="if(event.key===\'Enter\')PrivMod.send()" oninput="PrivMod._onTyping()" oncompositionstart="PrivMod._onTyping()"><button id="pv-btn-send" onclick="PrivMod.send()">发送</button></div>';
 
         U.sys(document.getElementById('pv-msgs'), '提示：离线消息测试请先在线建立会话，再关闭对方窗口继续发送');
 
@@ -88,7 +88,7 @@ var PrivMod = {
 
     enterChat: function(cid, peer) {
         if (this.cid !== cid) {
-            this._msgs = [];
+            this._msgs = []; this._readByPeer = {};
             var elM = document.getElementById('pv-msgs'); if (elM) elM.innerHTML = '';
         }
         this.cid = cid;
@@ -122,7 +122,7 @@ var PrivMod = {
         if (mt === 'private_conversation_created' && m.code === 200) {
             var newCid = m.content.conversation_id;
             if (newCid && this.cid !== newCid) {
-                this._msgs = [];
+                this._msgs = []; this._readByPeer = {};
                 var elM = document.getElementById('pv-msgs'); if (elM) elM.innerHTML = '';
             }
             this.cid = newCid;
@@ -146,12 +146,12 @@ var PrivMod = {
             var histCidP = m.content && m.content.conversation_id;
             if (this.cid && histCidP && histCidP !== this.cid) return;
             var histMsgsP = (m.content && m.content.messages) || [];
-            this._msgs = [];
+            this._msgs = []; this._readByPeer = {};
             var histElP = document.getElementById('pv-msgs');
             if (histElP) histElP.innerHTML = '';
             for (var hp = 0; hp < histMsgsP.length; hp++) {
                 var hmp = histMsgsP[hp];
-                var entryP = { type: 'chat', m: { msg_type: hmp.msg_type, content: { conversation_id: hmp.conversation_id, from_user_id: hmp.from_user_id, text: hmp.text } } };
+                var entryP = { type: 'chat', m: { msg_id: hmp.msg_id, msg_type: hmp.msg_type, content: { conversation_id: hmp.conversation_id, from_user_id: hmp.from_user_id, text: hmp.text } } };
                 this._msgs.push(entryP);
                 this._renderMsg(entryP);
             }
@@ -161,8 +161,17 @@ var PrivMod = {
         }
         if (mt === 'private_chat') {
             var msgCid2 = m.content && m.content.conversation_id;
-            if (this.cid && msgCid2 && msgCid2 !== this.cid) return;
             this._recoverState(m);
+            // Guard: if viewing a different private conversation, save but don't render
+            if (this.cid && msgCid2 && msgCid2 !== this.cid) {
+                this._saveMsgs(msgCid2);
+                return;
+            }
+            for (var j = 0; j < this._msgs.length; j++) {
+                if (this._msgs[j].type === 'chat' && this._msgs[j].m.msg_id === m.msg_id) {
+                    return;
+                }
+            }
             this._msgs.push({ type: 'chat', m: m });
             this._renderMsg({ type: 'chat', m: m });
             this._saveMsgs(m.content && m.content.conversation_id);
@@ -185,7 +194,28 @@ var PrivMod = {
             var rruid = m.content && m.content.user_id;
             var rrcid = m.content && m.content.conversation_id;
             if (!rruid || (this.cid && rrcid && rrcid !== this.cid)) return;
-            this._pushSys(rruid + ' 已读');
+            var lastRead = m.content.last_read_msg_id;
+            if (lastRead) {
+                this._readByPeer[lastRead] = true;
+                var msgEl = document.getElementById('msg-' + lastRead);
+                if (msgEl) {
+                    var existing = msgEl.querySelector('.msg-read');
+                    if (!existing) {
+                        var span = document.createElement('span');
+                        span.className = 'msg-read';
+                        span.textContent = '已读';
+                        msgEl.appendChild(span);
+                    }
+                }
+            }
+            // Also re-render all messages from cache so _readByPeer takes effect on next render
+            var el = document.getElementById('pv-msgs');
+            if (el && this._msgs.length > 0) {
+                el.innerHTML = '';
+                for (var ri = 0; ri < this._msgs.length; ri++) {
+                    this._renderMsg(this._msgs[ri]);
+                }
+            }
             return;
         }
         if (mt === 'error') {
@@ -224,15 +254,23 @@ var PrivMod = {
             U.sys(document.getElementById('pv-msgs'), entry.text);
         } else if (entry.type === 'chat') {
             var own = (entry.m.content && entry.m.content.from_user_id) === State.user();
-            U.msg(document.getElementById('pv-msgs'), entry.m.content, own);
+            var extra = { mid: entry.m.msg_id };
+            if (own && entry.m.msg_id && this._readByPeer[entry.m.msg_id]) {
+                extra.ack = '已读';
+            }
+            U.msg(document.getElementById('pv-msgs'), entry.m.content, own, extra);
         }
     },
 
     _onTyping: function() {
         if (!this.cid || !this.cl) return;
-        this.cl.sendTypingStart(this.cid);
+        if (!this._typingSent) {
+            this._typingSent = true;
+            this.cl.sendTypingStart(this.cid);
+        }
         clearTimeout(this._typingTimer);
         this._typingTimer = setTimeout(function(self) {
+            self._typingSent = false;
             if (self.cid && self.cl) self.cl.sendTypingStop(self.cid);
         }, 2000, this);
     },
@@ -254,9 +292,15 @@ var PrivMod = {
 
     _sendReadReceipt: function() {
         if (!this.cid || !this.cl || this._msgs.length === 0) return;
-        var last = this._msgs[this._msgs.length - 1];
-        var lastMid = (last.m && last.m.msg_id) || '';
-        if (lastMid) this.cl.sendReadReceipt(this.cid, lastMid);
+        for (var i = this._msgs.length - 1; i >= 0; i--) {
+            var entry = this._msgs[i];
+            var mid = (entry.m && entry.m.msg_id) || '';
+            var fromId = (entry.m && entry.m.content && entry.m.content.from_user_id) || '';
+            if (mid && fromId && fromId !== State.user()) {
+                this.cl.sendReadReceipt(this.cid, mid);
+                return;
+            }
+        }
     },
 
     startChat: function() {
@@ -270,7 +314,13 @@ var PrivMod = {
         if (!this.cid) { U.sys(document.getElementById('pv-msgs'), '请先发起私聊会话'); return; }
         var t = document.getElementById('pv-input').value.trim();
         if (!t) return;
-        this.cl.sendPrivMsg(this.cid, t, true);
+        var msg = this.cl.sendPrivMsg(this.cid, t, true);
+        if (msg) {
+            var entry = { type: 'chat', m: { msg_type: 'private_chat', msg_id: msg.msg_id, content: { conversation_id: this.cid, from_user_id: State.user(), text: t } } };
+            this._msgs.push(entry);
+            this._renderMsg(entry);
+            this._saveMsgs();
+        }
         document.getElementById('pv-input').value = '';
     }
 };

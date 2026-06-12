@@ -125,7 +125,7 @@ WsClient.prototype.createPrivConv = function(target) { return this._send(Proto.c
 WsClient.prototype.sendPrivMsg = function(cid, text, ack) {
     var msg = Proto.privateChat(cid, text, ack);
     if (ack !== false) this._ack[msg.msg_id] = { time: Date.now(), status: 'pending' };
-    return this._send(msg);
+    return this._send(msg) ? msg : null;
 };
 WsClient.prototype.listRooms = function() { return this._send(Proto.listRooms()); };
 WsClient.prototype.listMyConversations = function() { return this._send(Proto.listMyConversations()); };

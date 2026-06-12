@@ -103,10 +103,6 @@ async def deliver_private_message_locally(
         },
     )
 
-    sender_websockets = get_online_websockets_by_user_id(from_user_id)
-    for sender_ws in sender_websockets:
-        await send_json(sender_ws, response)
-
     target_websockets = get_online_websockets_by_user_id(to_user_id)
     if target_websockets:
         for target_ws in target_websockets:
@@ -187,8 +183,6 @@ async def deliver_private_message_online_only_locally(
         },
     )
 
-    participant_ids = {from_user_id, to_user_id}
-    for user_id in participant_ids:
-        target_websockets = get_online_websockets_by_user_id(user_id)
-        for target_ws in target_websockets:
-            await send_json(target_ws, response)
+    target_websockets = get_online_websockets_by_user_id(to_user_id)
+    for target_ws in target_websockets:
+        await send_json(target_ws, response)
